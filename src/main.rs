@@ -38,8 +38,9 @@ const SECTION_LABEL: f32 = 26.0;
 const SECTION_GAP: f32 = 14.0;
 const PREVIEW_HEIGHT: f32 = 96.0;
 const SEARCH_BOX: f32 = 40.0;
-/// The search window keeps one size, so it does not jump while you type.
-const SEARCH_HEIGHT: f32 = 2.0 * PAD + SEARCH_BOX + SEARCH_ROWS as f32 * ROW;
+const SEARCH_PAD: f32 = 12.0;
+/// The space between the search box and the results.
+const SEARCH_GAP: f32 = 8.0;
 const SLIDER_BLOCK: f32 = 46.0;
 /// The width of a slider: the window, less its padding and the padding of the card it sits in.
 const SLIDER_WIDTH: f32 = SETTINGS_WIDTH - 2.0 * PAD;
@@ -261,10 +262,15 @@ fn open_item(s: &mut State, tx: &mut Tx, item: &Item) {
     }
 }
 
+/// The search window is as tall as its results (at least one row, for the "no match" line).
+fn search_height(results: usize) -> f32 {
+    2.0 * SEARCH_PAD + SEARCH_BOX + SEARCH_GAP + results.clamp(1, SEARCH_ROWS) as f32 * ROW
+}
+
 fn window_height(s: &State) -> f32 {
     match s.mode {
         Mode::Welcome => WELCOME_HEIGHT,
-        Mode::Search => SEARCH_HEIGHT,
+        Mode::Search => search_height(search_results(s).len()),
         Mode::Settings => settings_height(s.items.len(), s.advanced),
         Mode::Strip => s.look.cell() + 2.0 * s.look.padding,
     }
@@ -274,7 +280,7 @@ fn window_height(s: &State) -> f32 {
 pub fn window_size(mode: Mode) -> (f32, f32) {
     let height = match mode {
         Mode::Welcome => WELCOME_HEIGHT,
-        Mode::Search => SEARCH_HEIGHT,
+        Mode::Search => search_height(ITEM_COUNT.load(Ordering::Relaxed)),
         Mode::Settings => settings_height(ITEM_COUNT.load(Ordering::Relaxed), ADVANCED_OPEN.load(Ordering::Relaxed)),
         Mode::Strip => look().cell() + 2.0 * look().padding,
     };
@@ -494,26 +500,34 @@ fn search_view(s: &State, dark: bool) -> El {
     let t = tok::theme(dark);
     let found: Vec<Item> = search_results(s).into_iter().take(SEARCH_ROWS).cloned().collect();
     let first = found.first().cloned();
-    let input = text_input(&s.query, TextStyle::new(15.0, 450.0))
+    let field = text_input(&s.query, TextStyle::new(15.0, 450.0))
         .on_edit(|s: &mut State| &mut s.query)
         .on_submit(move |s: &mut State, tx| {
             if let Some(item) = &first {
                 open_item(s, tx, item);
             }
         })
+        .key("search-box")
+        .single_line()
+        .placeholder("Search icons", t.text_secondary)
+        .on_input_change(|s: &mut State, tx| fit(s, tx))
         .autofocus()
         .label("Search menu bar icons")
-        .w_full()
-        .h(SEARCH_BOX);
+        .grow(1.0);
+    // The box: a soft field.
+    let input = row().w_full().h(SEARCH_BOX).px(14.0).center_y().radius(12.0).fill(card_fill(dark)).child(field);
     let rows = found.into_iter().enumerate().map(|(i, item)| {
         let name = item.name.clone();
         let icon = picture(&item, 22.0, dark);
-        row().key(format!("result-{i}")).role("button").label(name.as_str()).hit().w_full().h(ROW).center_y().gap(12.0)
+        row().key(format!("result-{i}")).role("button").label(name.as_str()).hit().w_full().h(ROW).center_y().gap(12.0).px(6.0)
             .on_press_tx(move |s: &mut State, tx| open_item(s, tx, &item))
             .child(icon)
             .child(text(name).font(TextStyle::new(13.5, 450.0)).color(t.text))
     });
-    glass(WINDOW_RADIUS).padding(PAD).child(input).child(hairline(dark)).children(rows)
+    let none = s.items.iter().all(|item| !matches(&item.name, &s.query.text)).then(|| {
+        row().w_full().h(ROW).center_y().px(6.0).child(text("No matching icons").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
+    });
+    glass(WINDOW_RADIUS).padding(SEARCH_PAD).child(input).child(el().h(SEARCH_GAP)).children(rows).children(none)
 }
 
 fn settings_view(s: &State, dark: bool) -> El {

@@ -187,7 +187,9 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
         // The bottom edge of the menu bar, in Cocoa coordinates (y counts up from the bottom of the main display).
         let bar_bottom = screen.visibleFrame().origin.y + screen.visibleFrame().size.height;
         // Centred under the click, but never past the screen edge.
-        let left = (mouse_x - width / 2.0).clamp(frame.origin.x + 8.0, (frame.origin.x + frame.size.width - width - 8.0).max(frame.origin.x + 8.0));
+        // Search opens in the middle of the display, the others under the click.
+        let centre = if mode == Mode::Search { frame.origin.x + frame.size.width / 2.0 } else { mouse_x };
+        let left = (centre - width / 2.0).clamp(frame.origin.x + 8.0, (frame.origin.x + frame.size.width - width - 8.0).max(frame.origin.x + 8.0));
         // Rune wants points counted from the top left of the main display.
         (left, primary_height - bar_bottom + 6.0)
     };
@@ -197,6 +199,9 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
         s.mode = mode;
         s.query = rune::TextEdit::new("");
         crate::fit(s, tx);
+        if mode == Mode::Search {
+            tx.focus_when_shown("search-box", false);
+        }
     });
     if mode != Mode::Welcome {
         crate::reload(handle.clone());
@@ -206,6 +211,11 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
         OverlayPlacement::Rect { x: x as f32, y: y as f32, width: width as f32, height: height as f32 },
     );
     handle.show();
+    // Typing needs the keyboard, so search takes it from the app in front.
+    if mode == Mode::Search {
+        #[allow(deprecated)]
+        NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+    }
 }
 
 /// `open` for a shortcut: the window opens under the mouse, on the display it is on.

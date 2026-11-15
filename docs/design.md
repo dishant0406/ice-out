@@ -113,7 +113,8 @@ Right-click the Iceout icon, then Search. You type, and the icons whose names co
 
 - **Plain letter match, not fuzzy scoring.** Ice uses a fuzzy search library. Here the list is about 40 names at most, so "letters in order" is enough, and it needs no new dependency.
 - **It searches all icons, hidden or not.** A hidden icon is brought out and put back, the same way the strip does it (`open_item` calls the same `press_hidden`). A visible icon is just pressed.
-- **Fixed window height.** Six rows tall, always. The window does not jump while you type, and we never have to resize it on each key.
+- **The window is as tall as its results.** A soft box with a hint ("Search icons") on top, then at most six rows. It shrinks as you type, down to one "No matching icons" line, so there is never a big empty pane. A first version had a fixed height with empty space and a box you could not see. It opens in the middle of the display, like a launcher.
+- **It takes the keyboard.** A hot key does not make Ice Out the front app, so search activates the app and asks Rune to focus the box, so you can type at once.
 
 ## Keyboard shortcuts
 

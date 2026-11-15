@@ -56,10 +56,10 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 
 ## Search
 
-1. Right-click the icon, choose Search. `search:` in `src/status_item.rs` calls `open(Mode::Search)`. The box starts empty and has focus.
-2. Each key changes `State.query`. `search_results` in `src/main.rs` keeps the icons that match (`matches`). Six rows show at most.
+1. Right-click the icon and choose Search, or use the chord. `open(Mode::Search)` in `src/status_item.rs` clears the box, makes Ice Out the front app and focuses the box (`focus_when_shown`). The window opens in the middle of the display.
+2. Each key changes `State.query`. `search_results` in `src/main.rs` keeps the icons that match (`matches`). Six rows show at most, and `fit` resizes the window to the rows.
 3. Enter (`on_submit`) or a click calls `open_item`: the window closes, then a hidden icon is revealed with `press_hidden`, or a visible one is pressed.
-4. Nothing matches: the list is empty. Enter does nothing. Click away or Done closes it as always.
+4. Nothing matches: the list shows "No matching icons". Enter does nothing. Click away or Done closes it as always.
 5. Busy (another icon is moving): `open_item` does nothing, so a second request cannot collide.
 
 ## Keyboard shortcuts
