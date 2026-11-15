@@ -33,6 +33,7 @@ So Ice Out asks for the smallest permission it can, and it is built to be light.
 - **Search.** Right-click the icon, then Search. Type a few letters and open any icon.
 - **Keyboard shortcuts.** Hold I (for Ice) + Option + Command, then press Space to show the hidden icons or F to search. One switch in Settings, with the keys in a small line under it.
 - **Presets.** Save the hidden icons under a name (Settings, then Presets). Switch from there or from the right-click menu. Only the icons that differ move.
+- **Triggers.** Apply a preset on its own: on battery, plugged in, between two times, or when an app is running. Checked every 30 seconds. No extra permission.
 - **Open at login.** One switch.
 - **First-launch setup.** It walks you through allowing Accessibility.
 - **Quit puts everything back.** If you quit Ice Out, your bar is the way it was.
@@ -73,6 +74,7 @@ Because of this, hiding, showing and "peeking" an icon move **only that icon**. 
 | `src/items.rs` | Accessibility reads, the icon window list, moving icons |
 | `src/status_item.rs` | The two menu bar buttons, right-click menu, window placement, peeking |
 | `src/hotkeys.rs` | Keyboard shortcuts |
+| `src/triggers.rs` | Triggers: the rules and the 30 second check |
 | `src/presets.rs` | Presets: save, compare, work out the moves |
 | `src/login.rs` | Start at login |
 | `assets/` | App icon, menu bar mark, installer picture |
@@ -96,7 +98,7 @@ I did not run Ice or Bartender side by side with a profiler, so I do **not** hav
 | Shows only the clicked icon | Yes | Yes (temp show) | Yes |
 | Search and hotkeys | Yes (fixed keys) | Yes | Yes |
 | Presets | Yes | No | Yes |
-| Triggers | Not yet | No | Yes |
+| Triggers | Battery, time, app (no Wi-Fi, Focus yet) | No | Yes |
 | Menu bar styling (tint, border, shape) | No | Yes | Yes |
 | Notch handling | Basic (moves unseen icons to the hidden side) | Yes (Ice Bar) | Yes |
 
@@ -138,6 +140,7 @@ I tested these live on a real menu bar, with screenshots:
 
 Built, but **not tested live yet** (please try them and tell me):
 
+- Triggers: the form, and a trigger firing on its own. I only tested that the time, power and app checks answer, and how the screens look.
 - Presets: saving one, applying one (moves several icons) and deleting one. I only checked that the window opens from Settings and that the moves are worked out right (unit tests).
 - Search with a real click, and the two keyboard shortcuts (the keyboard tap is created and active, but I did not press the keys, because key presses stop my own session).
 - The window opening under the right display on a **second monitor**.
@@ -149,7 +152,7 @@ Built, but **not tested live yet** (please try them and tell me):
 ## Still in development
 
 - Choose your own hotkeys.
-- Rules: show certain icons by Wi-Fi, battery or time.
+- Triggers for Wi-Fi and Focus (they need extra permissions, so they would be opt-in), and more than one condition per trigger.
 - Always-hidden section.
 - Real menu bar glyphs as an optional extra (this needs Screen Recording, so it would be opt-in).
 - Developer ID signing and notarization, so other Macs open it without a warning.

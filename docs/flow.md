@@ -83,6 +83,16 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 6. The x deletes a preset. The list is saved on another thread (`presets::save`) and the menu names are updated (`set_preset_names`).
 7. "Active" appears on a preset that matches the bar now.
 
+## Triggers
+
+1. Settings, then the "Triggers" row, opens `Mode::Triggers` (`triggers_view`). With no trigger it says "No triggers yet". With no preset it says to save a preset first.
+2. "New trigger" opens the form (`State.draft`): pick WHEN (a dot), type a time range like `09:00-18:00` or an app name if the kind needs one, pick the preset to APPLY. "Add trigger" is grey until the form is valid (`triggers::is_valid`): a time range must parse, an app name must not be empty, and a preset must be chosen.
+3. Add: the trigger is saved (`triggers::save`) and checked at once (`triggers::evaluate`). Back leaves the form first, then the list.
+4. Every 30 seconds `triggers::start` calls `evaluate` on the main thread. The last true trigger in the list wins. If the winner is different from last time, its preset is applied (`apply_preset`), and `last_trigger` remembers it. No winner clears `last_trigger`, so the same trigger fires again next time it becomes true.
+5. No Accessibility: nothing is checked. Icons moving: `apply_preset` says no, and the check is repeated in 30 seconds.
+6. Delete a trigger with the x. Deleting a preset removes the triggers that use it.
+7. A time range that crosses midnight (`22:00-06:00`) works. An app name matches any running app whose name contains the text, ignoring case.
+
 ## Closing
 
 Done, a click on the Iceout icon, or a click anywhere else (global mouse monitor) hides the window.

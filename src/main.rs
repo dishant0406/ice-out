@@ -7,6 +7,7 @@
 mod items;
 mod hotkeys;
 mod presets;
+mod triggers;
 mod login;
 mod status_item;
 
@@ -29,6 +30,14 @@ const HEADER: f32 = 36.0;
 const LOGO: f32 = 26.0;
 /// The corner radius of the Settings and welcome windows, in points.
 const WINDOW_RADIUS: f32 = 8.0;
+/// A trigger being made: what it waits for, the text for that (a time range or an app name), and the preset it applies.
+#[derive(Default)]
+pub struct Draft {
+    pub kind: String,
+    pub text: rune::TextEdit,
+    pub preset: Option<String>,
+}
+
 pub const APP_ID: &str = "dev.iceout";
 const WELCOME_WIDTH: f32 = 360.0;
 const SEARCH_WIDTH: f32 = 360.0;
@@ -38,6 +47,8 @@ const WELCOME_HEIGHT: f32 = 404.0;
 const SECTION_LABEL: f32 = 26.0;
 const SECTION_GAP: f32 = 14.0;
 const PREVIEW_HEIGHT: f32 = 96.0;
+/// How many presets the new-trigger form lists.
+const FORM_PRESETS: usize = 4;
 const SEARCH_BOX: f32 = 40.0;
 const SEARCH_PAD: f32 = 12.0;
 /// The space between the search box and the results.
@@ -181,6 +192,8 @@ pub enum Mode {
     Search,
     /// Saved layouts: pick one to apply it, or save the current one.
     Presets,
+    /// Rules that apply a preset on their own.
+    Triggers,
 }
 
 #[derive(Default)]
@@ -203,6 +216,10 @@ pub struct State {
     /// Saved layouts, and the name being typed for a new one.
     pub presets: Vec<presets::Preset>,
     pub preset_name: rune::TextEdit,
+    /// The rules, which one is in force, and the new rule being made (if any).
+    pub triggers: Vec<triggers::Trigger>,
+    pub last_trigger: Option<usize>,
+    pub draft: Option<Draft>,
     /// The Iceout mark, shown at the top of Settings and the welcome window.
     pub logo: Option<rune::Image>,
     /// Keys of icons the user has had in view, so an app that restarts (its new icon always starts
@@ -230,7 +247,7 @@ pub fn window_width(mode: Mode) -> f32 {
     let look = look();
     match mode {
         Mode::Welcome => WELCOME_WIDTH,
-        Mode::Search | Mode::Presets => SEARCH_WIDTH,
+        Mode::Search | Mode::Presets | Mode::Triggers => SEARCH_WIDTH,
         Mode::Settings => SETTINGS_WIDTH,
         Mode::Strip if n == 0 => 320.0,
         Mode::Strip => 2.0 * look.padding + n as f32 * look.cell() + (n as f32 - 1.0) * look.spacing,
@@ -242,7 +259,7 @@ pub fn window_width(mode: Mode) -> f32 {
 fn settings_height(icons: usize, advanced: bool) -> f32 {
     let rows = (icons.max(1) as f32).min(if advanced { 4.0 } else { 8.0 });
     let appearance = if advanced { PREVIEW_HEIGHT + 4.0 * SLIDER_BLOCK + 8.0 } else { 0.0 };
-    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 4.0 * ROW + appearance;
+    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 5.0 * ROW + appearance;
     (2.0 * PAD + HEADER + SECTION_GAP + body).min(760.0)
 }
 
@@ -284,6 +301,17 @@ fn presets_height(count: usize) -> f32 {
     2.0 * SEARCH_PAD + HEADER + count.clamp(1, SEARCH_ROWS) as f32 * ROW + 0.5 + SEARCH_GAP + SEARCH_BOX
 }
 
+/// The triggers window: the list (a title, the rules, a line, one row to add) or the form for a new rule.
+fn triggers_height(s: &State) -> f32 {
+    let top = 2.0 * SEARCH_PAD + HEADER;
+    let Some(draft) = &s.draft else {
+        return top + s.triggers.len().clamp(1, SEARCH_ROWS) as f32 * ROW + 0.5 + SEARCH_GAP + ROW;
+    };
+    let text_box = if draft.kind == triggers::TIME || draft.kind == triggers::APP { SEARCH_BOX } else { 0.0 };
+    let presets = s.presets.len().clamp(1, FORM_PRESETS) as f32 * ROW;
+    top + SECTION_LABEL + 4.0 * ROW + text_box + SECTION_LABEL + presets + SEARCH_GAP + ROW
+}
+
 /// Saves the icons that are hidden now under the typed name, replacing a preset of that name.
 fn save_preset(s: &mut State, tx: &mut Tx) {
     if add_preset(s) {
@@ -308,6 +336,10 @@ fn add_preset(s: &mut State) -> bool {
 
 fn delete_preset(s: &mut State, tx: &mut Tx, name: &str) {
     s.presets.retain(|p| p.0 != name);
+    // A trigger for a preset that is gone has nothing to apply.
+    s.triggers.retain(|t| t.2 != name);
+    s.last_trigger = None;
+    triggers::save(s.triggers.clone());
     presets_changed(s, tx);
 }
 
@@ -319,14 +351,16 @@ fn presets_changed(s: &State, tx: &mut Tx) {
 }
 
 /// Moves the icons that differ from the preset, one at a time, on a background thread.
-pub fn apply_preset(s: &mut State, name: &str) {
-    let (false, Some(handle)) = (s.busy, s.handle.clone()) else { return };
-    let Some(preset) = s.presets.iter().find(|p| p.0 == name) else { return };
+/// Returns false when it could not start because an icon is being moved.
+pub fn apply_preset(s: &mut State, name: &str) -> bool {
+    let (false, Some(handle)) = (s.busy, s.handle.clone()) else { return false };
+    let Some(preset) = s.presets.iter().find(|p| p.0 == name) else { return true };
     let moves = presets::moves(s, preset);
     if !moves.is_empty() {
         s.busy = true;
         status_item::move_items(handle, moves);
     }
+    true
 }
 
 fn window_height(s: &State) -> f32 {
@@ -334,6 +368,7 @@ fn window_height(s: &State) -> f32 {
         Mode::Welcome => WELCOME_HEIGHT,
         Mode::Search => search_height(search_results(s).len()),
         Mode::Presets => presets_height(s.presets.len()),
+        Mode::Triggers => triggers_height(s),
         Mode::Settings => settings_height(s.items.len(), s.advanced),
         Mode::Strip => s.look.cell() + 2.0 * s.look.padding,
     }
@@ -345,6 +380,7 @@ pub fn window_size(mode: Mode) -> (f32, f32) {
         Mode::Welcome => WELCOME_HEIGHT,
         Mode::Search => search_height(ITEM_COUNT.load(Ordering::Relaxed)),
         Mode::Presets => presets_height(PRESET_COUNT.load(Ordering::Relaxed)),
+        Mode::Triggers => presets_height(1),
         Mode::Settings => settings_height(ITEM_COUNT.load(Ordering::Relaxed), ADVANCED_OPEN.load(Ordering::Relaxed)),
         Mode::Strip => look().cell() + 2.0 * look().padding,
     };
@@ -523,6 +559,7 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
         Mode::Welcome => welcome_view(s, dark),
         Mode::Search => search_view(s, dark),
         Mode::Presets => presets_view(s, dark),
+        Mode::Triggers => triggers_view(s, dark),
     }
 }
 
@@ -649,6 +686,140 @@ fn presets_view(s: &State, dark: bool) -> El {
     glass(WINDOW_RADIUS).key("presets-screen").padding(SEARCH_PAD).child(header).children(rows).children(none).child(hairline(dark)).child(el().h(SEARCH_GAP)).child(input)
 }
 
+/// A row with a dot: filled when chosen. Used for the choices in the new-trigger form.
+fn choice(key: String, label: &str, chosen: bool, dark: bool, on_press: impl Fn(&mut State, &mut Tx) + 'static) -> El {
+    let t = tok::theme(dark);
+    let dot = if chosen { tok::accent(0, dark) } else { line_fill(dark) };
+    row().key(key).role("radio").label(label).checked(chosen).hit().w_full().h(ROW).center_y().px(6.0).gap(12.0)
+        .on_press_tx(on_press)
+        .child(el().size(8.0, 8.0).radius(4.0).fill(dot).a11y_hidden())
+        .child(text(label).font(TextStyle::new(13.5, 450.0)).color(t.text))
+}
+
+/// The rules, or the form for a new one. Plain words and thin lines, like Presets.
+fn triggers_view(s: &State, dark: bool) -> El {
+    let t = tok::theme(dark);
+    let title = if s.draft.is_some() { "New trigger" } else { "Triggers" };
+    let header = row().w_full().h(HEADER).center_y()
+        .child(text(title).font(TextStyle::new(15.0, 600.0)).color(t.text).grow(1.0))
+        .child(row().key("triggers-back").role("button").label("Back").hit().h(HEADER).center_y()
+            .on_press_tx(|s: &mut State, tx| {
+                // Back leaves the form first, then the list.
+                if s.draft.take().is_none() {
+                    s.mode = Mode::Settings;
+                }
+                fit_instant(s, tx);
+            })
+            .child(text("Back").font(TextStyle::new(13.5, 450.0)).color(tok::accent(0, dark))));
+    let body = match &s.draft {
+        Some(draft) => trigger_form(s, draft, dark),
+        None => trigger_list(s, dark),
+    };
+    glass(WINDOW_RADIUS).key("triggers-screen").padding(SEARCH_PAD).child(header).child(body)
+}
+
+fn trigger_list(s: &State, dark: bool) -> El {
+    let t = tok::theme(dark);
+    let rows = s.triggers.iter().take(SEARCH_ROWS).enumerate().map(|(i, trigger)| {
+        row().w_full().h(ROW).center_y().px(6.0).gap(8.0)
+            .child(text(triggers::describe(&trigger.0, &trigger.1)).font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
+            .child(text(trigger.2.as_str()).font(TextStyle::new(12.0, 450.0)).color(t.text_secondary))
+            .child(row().key(format!("trigger-delete-{i}")).role("button").label("Delete trigger").hit().size(28.0, ROW).center()
+                .on_press_tx(move |s: &mut State, tx| {
+                    s.triggers.remove(i);
+                    s.last_trigger = None;
+                    triggers::save(s.triggers.clone());
+                    fit(s, tx);
+                })
+                .child(text("×").font(TextStyle::new(16.0, 450.0)).color(t.text_secondary)))
+    });
+    let none = s.triggers.is_empty().then(|| {
+        row().w_full().h(ROW).center_y().px(6.0).child(text("No triggers yet").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
+    });
+    let add = if s.presets.is_empty() {
+        row().w_full().h(ROW).center_y().px(6.0).child(text("Save a preset first, then add a trigger").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
+    } else {
+        row().key("trigger-new").role("button").label("New trigger").hit().w_full().h(ROW).center_y().px(6.0)
+            .on_press_tx(|s: &mut State, tx| {
+                s.draft = Some(Draft { kind: triggers::BATTERY.into(), ..Draft::default() });
+                fit_instant(s, tx);
+            })
+            .child(text("New trigger").font(TextStyle::new(13.5, 450.0)).color(tok::accent(0, dark)))
+    };
+    col().w_full().children(rows).children(none).child(hairline(dark)).child(el().h(SEARCH_GAP)).child(add)
+}
+
+fn trigger_form(s: &State, draft: &Draft, dark: bool) -> El {
+    let t = tok::theme(dark);
+    let kinds = [(triggers::BATTERY, "On battery"), (triggers::PLUGGED, "Plugged in"), (triggers::TIME, "Between two times"), (triggers::APP, "An app is running")];
+    let when = kinds.into_iter().map(|(kind, label)| {
+        choice(format!("kind-{kind}"), label, draft.kind == kind, dark, move |s: &mut State, tx| {
+            if let Some(d) = &mut s.draft {
+                d.kind = kind.into();
+            }
+            fit(s, tx);
+        })
+    });
+    let hint = if draft.kind == triggers::TIME { Some("09:00-18:00") } else if draft.kind == triggers::APP { Some("App name, like Xcode") } else { None };
+    let text_box = hint.map(|hint| {
+        let field = text_input(&draft.text, TextStyle::new(14.0, 450.0))
+            .on_edit(|s: &mut State| &mut s.draft.as_mut().expect("a draft is open").text)
+            .key("trigger-text")
+            .single_line()
+            .placeholder(hint, t.text_secondary)
+            .label("What the trigger waits for")
+            .grow(1.0);
+        // Lined up with the choices above, with a thin line under it so it reads as a box.
+        col().w_full().child(row().w_full().h(SEARCH_BOX - 0.5).pl(26.0).center_y().child(field)).child(hairline(dark))
+    });
+    let presets = s.presets.iter().take(FORM_PRESETS).enumerate().map(|(i, preset)| {
+        let name = preset.0.clone();
+        choice(format!("pick-{i}"), &preset.0, draft.preset.as_deref() == Some(preset.0.as_str()), dark, move |s: &mut State, _| {
+            if let Some(d) = &mut s.draft {
+                d.preset = Some(name.clone());
+            }
+        })
+    });
+    let ready = draft.preset.is_some() && triggers::is_valid(&draft.kind, &draft.text.text);
+    let save = if ready {
+        row().key("trigger-save").role("button").label("Add trigger").hit().w_full().h(ROW).center_y().px(6.0)
+            .on_press_tx(|s: &mut State, tx| {
+                if let Some(d) = s.draft.take() {
+                    let arg = if d.kind == triggers::TIME || d.kind == triggers::APP { d.text.text.trim().to_string() } else { String::new() };
+                    s.triggers.push((d.kind, arg, d.preset.unwrap_or_default()));
+                    s.last_trigger = None;
+                    triggers::save(s.triggers.clone());
+                    triggers::evaluate(s);
+                }
+                fit_instant(s, tx);
+            })
+            .child(text("Add trigger").font(TextStyle::new(13.5, 600.0)).color(tok::accent(0, dark)))
+    } else {
+        row().w_full().h(ROW).center_y().px(6.0).child(text("Add trigger").font(TextStyle::new(13.5, 450.0)).color(t.text_secondary))
+    };
+    col().w_full()
+        .child(section_label("WHEN", dark))
+        .children(when)
+        .children(text_box)
+        .child(section_label("APPLY", dark))
+        .children(presets)
+        .child(el().h(SEARCH_GAP))
+        .child(save)
+}
+
+/// One row that opens the triggers.
+fn triggers_row(s: &State, dark: bool) -> El {
+    let t = tok::theme(dark);
+    row().key("triggers").role("button").label("Triggers").hit().w_full().h(ROW).center_y()
+        .on_press_tx(|s: &mut State, tx| {
+            s.mode = Mode::Triggers;
+            s.draft = None;
+            fit_instant(s, tx);
+        })
+        .child(text("Triggers").font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
+        .child(text(format!("{}  ›", s.triggers.len())).font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
+}
+
 /// One row that opens the presets.
 fn presets_row(s: &State, dark: bool) -> El {
     let t = tok::theme(dark);
@@ -698,7 +869,7 @@ fn settings_view(s: &State, dark: bool) -> El {
     glass(WINDOW_RADIUS).key("settings-screen").padding(PAD).gap(SECTION_GAP)
         .child(header)
         .child(icons_section)
-        .child(col().w_full().child(hairline(dark)).child(login_row(s, dark)).child(hairline(dark)).child(hotkeys_row(s, dark)).child(hairline(dark)).child(presets_row(s, dark)).child(hairline(dark)).child(advanced_section(s, dark)))
+        .child(col().w_full().child(hairline(dark)).child(login_row(s, dark)).child(hairline(dark)).child(hotkeys_row(s, dark)).child(hairline(dark)).child(presets_row(s, dark)).child(hairline(dark)).child(triggers_row(s, dark)).child(hairline(dark)).child(advanced_section(s, dark)))
 }
 
 /// One row with a switch: whether the program starts when you log in.
@@ -882,7 +1053,7 @@ fn init() -> State {
     let hotkeys = Prefs::open(APP_ID).get::<bool>("hotkeys").unwrap_or(true);
     let presets = presets::load();
     PRESET_COUNT.store(presets.len(), Ordering::Relaxed);
-    State { look, setup_done, login: login::enabled(), hotkeys, presets, ..State::default() }
+    State { look, setup_done, login: login::enabled(), hotkeys, presets, triggers: triggers::load(), ..State::default() }
 }
 
 fn setup(s: &mut State, waker: Waker) {
@@ -911,6 +1082,18 @@ fn main() {
             ("advanced", |s| { demo_items(s); s.mode = Mode::Settings; s.advanced = true; }),
             ("search", |s| { demo_items(s); s.query = rune::TextEdit::new("b"); s.mode = Mode::Search; }),
             ("presets", |s| { demo_items(s); s.presets = vec![("Work".into(), vec!["Wi-Fi#0".into()]), ("Focus".into(), vec![])]; s.mode = Mode::Presets; }),
+            ("triggers", |s| {
+                demo_items(s);
+                s.presets = vec![("Work".into(), vec![]), ("Focus".into(), vec![])];
+                s.triggers = vec![("battery".into(), String::new(), "Focus".into()), ("time".into(), "09:00-18:00".into(), "Work".into())];
+                s.mode = Mode::Triggers;
+            }),
+            ("trigger-form", |s| {
+                demo_items(s);
+                s.presets = vec![("Work".into(), vec![]), ("Focus".into(), vec![])];
+                s.draft = Some(Draft { kind: "time".into(), text: rune::TextEdit::new("09:00-18:00"), preset: Some("Work".into()) });
+                s.mode = Mode::Triggers;
+            }),
             ("welcome", |s| { demo_items(s); s.mode = Mode::Welcome; }),
             ("welcome-blocked", |s| { s.permission = false; s.mode = Mode::Welcome; }),
         ],
@@ -944,6 +1127,7 @@ fn main() {
     app.handle().update(move |s, _| {
         status_item::add(handle.clone());
         status_item::set_preset_names(s.presets.iter().map(|p| p.0.clone()).collect());
+        triggers::start(handle.clone());
         hotkeys::install(handle);
         hotkeys::set_enabled(s.hotkeys);
     });
@@ -1056,6 +1240,29 @@ mod tests {
         assert_eq!(state.presets.len(), 1);
         state.preset_name = rune::TextEdit::new("   ");
         assert!(!add_preset(&mut state));
+    }
+
+    #[test]
+    fn the_trigger_form_lists_choices_and_asks_for_a_time() {
+        let mut state = State::default();
+        demo_items(&mut state);
+        state.presets = vec![("Work".into(), vec![])];
+        state.draft = Some(Draft { kind: "time".into(), ..Draft::default() });
+        state.mode = Mode::Triggers;
+        let size = (window_width(Mode::Triggers), window_height(&state));
+        let mut rt = Runtime::new(state, view, size, Env { system_dark: true, scale: 2.0 });
+        rt.frame(0.0);
+        for key in ["kind-battery", "kind-plugged", "kind-time", "kind-app", "trigger-text", "pick-0"] {
+            assert!(rt.find(key).is_some(), "{key} is drawn");
+        }
+        // The form is not ready until a preset is chosen, so there is no Add button yet.
+        assert!(rt.find("trigger-save").is_none());
+        let (x, y) = rt.find("pick-0").unwrap();
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        // A preset is chosen, but "time" still needs a valid range.
+        assert!(rt.find("trigger-save").is_none());
     }
 
     #[test]

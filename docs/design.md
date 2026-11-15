@@ -139,3 +139,15 @@ A preset is a name and the list of icons that are hidden. Applying one moves onl
 - **Tests do not touch your settings.** `save_look` and `presets::save` do nothing under `cargo test`. Before this, the slider test wrote tiny icon sizes into the real `prefs.json`.
 - **Switching between Settings and Presets resizes the window at once.** An animated resize stretched the icons for a moment (the content is drawn for the new size while the window is still growing). `fit_instant` skips the animation. The Appearance section and search results still animate, because there the content moves with the window.
 - **Each full screen has its own key** (`settings-screen`, `presets-screen`). Without one, Rune matches the first child of Settings (the logo) with the first child of Presets (a title) by position and animates one into the other, which looked like the logo stretching.
+
+## Triggers
+
+A trigger says "when this is true, apply that preset". Four kinds, none needs a permission: on battery, plugged in, between two times, an app is running.
+
+- **One condition per trigger.** Bartender lets you stack conditions. Here a trigger has one, and the list is ordered: if two are true, the one lower in the list wins. That is simple to explain and covers the common cases. Stacking can come later if it is missed.
+- **A check every 30 seconds, not events.** A small background thread wakes twice a minute, asks the system three cheap questions (power source, the clock, the list of running apps) and sleeps. The cost is too small to measure, and it avoids three different event systems. Idle CPU stays at 0.0%. The price: a trigger can fire up to 30 seconds late. Event-based power notifications are the way to fix that if it matters.
+- **It applies only when the winner changes** (`last_trigger`). If you move an icon by hand, nothing puts it back until a different trigger wins. This was in the plan: a trigger must not fight the user.
+- **Busy means try again.** If icons are moving, the check leaves `last_trigger` alone and tries again 30 seconds later.
+- **Wi-Fi and Focus are not here.** They need Location and extra permissions on current macOS. The whole point of Ice Out is few permissions, so they wait for an opt-in later.
+- **Types are plain strings** (`(kind, text, preset)`), saved in `prefs.json` like presets, so there is no new library. Deleting a preset deletes the triggers that use it.
+- **UI.** Settings has a "Triggers" row with a count. It opens a list in plain words ("On battery ... Focus", "09:00 - 18:00 ... Work") with a x on each, and a "New trigger" row. The form is two short lists of choices with a dot (WHEN, APPLY), a text box only when a time range or an app name is needed, and an explicit "Add trigger" button that stays grey until the form is valid. Research on rule builders (Front, Jira automation, Bartender's own guides) agreed on: plain words, an ordered list, and a visible save step, because people miss that Enter saves.

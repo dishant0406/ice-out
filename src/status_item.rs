@@ -131,7 +131,9 @@ declare_class!(
             let tag: isize = unsafe { msg_send![sender, tag] };
             let name = PRESET_NAMES.lock().unwrap_or_else(|e| e.into_inner()).get(tag as usize).cloned();
             if let Some(name) = name {
-                self.ivars().handle.update(move |s, _| crate::apply_preset(s, &name));
+                self.ivars().handle.update(move |s, _| {
+                    crate::apply_preset(s, &name);
+                });
             }
         }
 
