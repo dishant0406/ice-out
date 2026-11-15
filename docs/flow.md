@@ -59,7 +59,7 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 1. Right-click the icon and choose Search, or use the chord. `open(Mode::Search)` in `src/status_item.rs` clears the box, makes Ice Out the front app and focuses the box (`focus_when_shown`). The window opens in the middle of the display.
 2. Each key changes `State.query`. `search_results` in `src/main.rs` keeps the icons that match (`matches`). Six rows show at most, and `fit` resizes the window to the rows.
 3. Enter (`on_submit`) or a click calls `open_item`: the window closes, then a hidden icon is revealed with `press_hidden`, or a visible one is pressed.
-4. Escape in the box closes the window (`on_key` in `search_view`).
+4. Escape in the box closes the window (`on_input_key` in `search_view`: the box would otherwise take Escape and only lose focus).
 5. Nothing matches: the list shows "No matching icons". Enter does nothing. Click away or Done closes it as always.
 6. Busy (another icon is moving): `open_item` does nothing, so a second request cannot collide.
 
@@ -67,7 +67,7 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 
 1. To learn the keys: Settings shows them in a small line under the switch (only while it is on).
 2. At start `hotkeys::install` remembers the app handle. When Accessibility is allowed, `apply` calls `hotkeys::set_enabled(true)`, which makes the event tap the first time.
-3. Every key press goes to `on_key` in `src/hotkeys.rs`. Pressing I with Option and Command held marks I as held and swallows it. While I is held, Space (strip) or F (search) with Option and Command runs the action under the mouse (`open_at_mouse`) and is swallowed. Releasing I clears the mark.
+3. Every key press goes to `on_key` in `src/hotkeys.rs`. Pressing I with Option and Command held marks I as held and swallows it. While I is held, Space (strip) or F (search) with Option and Command runs the action (`open_from_shortcut`) and is swallowed. The strip opens under the Iceout icon, like a click on it. Search opens in the middle of the display. Releasing I clears the mark.
 4. Everything else is passed on untouched.
 5. The Settings switch calls `set_enabled` and saves `hotkeys` on another thread. Off means the tap is paused.
 6. No Accessibility: no tap, the keys do nothing, and the switch still shows on. Allowing Accessibility fixes it on the next read.

@@ -125,4 +125,4 @@ Hold I (for Ice) with Option and Command, then press Space to show or hide the s
 - **Permission:** an event tap that can change events needs Accessibility, which Ice Out already has. No new permission. Without Accessibility the tap cannot be made, so `apply` tries again on each read once it is allowed.
 - **Cost:** the tap runs a small function for every key press on the whole system, on the main thread. It only compares numbers and returns. The system turns a tap off if it is ever slow, so the callback turns it back on.
 - **Trade-off:** you cannot pick your own keys yet.
-- **The window opens under the mouse.** There is no button click to place it under, so a shortcut uses where the mouse is, on the display it is on.
+- **The strip opens under the Iceout icon.** A shortcut has no click, so it uses the middle of our own button instead of the mouse, and the strip lands where a click would put it. Search opens in the middle of the display.
