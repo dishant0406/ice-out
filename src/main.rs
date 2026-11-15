@@ -16,7 +16,7 @@ use items::Item;
 use rune::prefs::Prefs;
 use rune::tok;
 use rune::{
-    App, AppHandle, AppSpec, Cx, Drag, El, ImageCache, MacWindowOptions, Phase, ScrollSpec, SystemMaterial, TextStyle, Tx, Waker, WindowOptions, col, el,
+    text_input, App, AppHandle, AppSpec, Cx, Drag, El, ImageCache, MacWindowOptions, Phase, ScrollSpec, SystemMaterial, TextStyle, Tx, Waker, WindowOptions, col, el,
     oklcha, row, text,
 };
 
@@ -29,10 +29,16 @@ const LOGO: f32 = 26.0;
 const WINDOW_RADIUS: f32 = 8.0;
 const APP_ID: &str = "dev.iceout";
 const WELCOME_WIDTH: f32 = 360.0;
+const SEARCH_WIDTH: f32 = 360.0;
+/// The most results the search window shows at once.
+const SEARCH_ROWS: usize = 6;
 const WELCOME_HEIGHT: f32 = 404.0;
 const SECTION_LABEL: f32 = 26.0;
 const SECTION_GAP: f32 = 14.0;
 const PREVIEW_HEIGHT: f32 = 96.0;
+const SEARCH_BOX: f32 = 40.0;
+/// The search window keeps one size, so it does not jump while you type.
+const SEARCH_HEIGHT: f32 = 2.0 * PAD + SEARCH_BOX + SEARCH_ROWS as f32 * ROW;
 const SLIDER_BLOCK: f32 = 46.0;
 /// The width of a slider: the window, less its padding and the padding of the card it sits in.
 const SLIDER_WIDTH: f32 = SETTINGS_WIDTH - 2.0 * PAD;
@@ -163,6 +169,8 @@ pub enum Mode {
     Settings,
     /// The first-launch setup.
     Welcome,
+    /// A text box and the icons whose names match it.
+    Search,
 }
 
 #[derive(Default)]
@@ -180,6 +188,8 @@ pub struct State {
     /// The key of an icon that is shown for a moment so its menu can be used. It still counts as
     /// hidden while it is out.
     pub peeking: Option<String>,
+    /// What is typed in the search box.
+    pub query: rune::TextEdit,
     /// The Iceout mark, shown at the top of Settings and the welcome window.
     pub logo: Option<rune::Image>,
     /// Keys of icons the user has had in view, so an app that restarts (its new icon always starts
@@ -205,6 +215,7 @@ pub fn window_width(mode: Mode) -> f32 {
     let look = look();
     match mode {
         Mode::Welcome => WELCOME_WIDTH,
+        Mode::Search => SEARCH_WIDTH,
         Mode::Settings => SETTINGS_WIDTH,
         Mode::Strip if n == 0 => 320.0,
         Mode::Strip => 2.0 * look.padding + n as f32 * look.cell() + (n as f32 - 1.0) * look.spacing,
@@ -220,9 +231,37 @@ fn settings_height(icons: usize, advanced: bool) -> f32 {
     (2.0 * PAD + HEADER + SECTION_GAP + body).min(760.0)
 }
 
+/// Whether the letters of `query` appear in `name` in order, ignoring case: "mt" finds "Moneta".
+fn matches(name: &str, query: &str) -> bool {
+    let mut name = name.chars().flat_map(char::to_lowercase);
+    query.chars().flat_map(char::to_lowercase).filter(|c| !c.is_whitespace()).all(|c| name.any(|n| n == c))
+}
+
+/// The icons that match what is typed. An empty box matches every icon.
+fn search_results(s: &State) -> Vec<&Item> {
+    s.items.iter().filter(|item| matches(&item.name, &s.query.text)).collect()
+}
+
+/// Opens an icon's menu: a hidden one is brought out first, then put back.
+fn open_item(s: &mut State, tx: &mut Tx, item: &Item) {
+    tx.close_window();
+    let (false, Some(handle)) = (s.busy, s.handle.clone()) else { return };
+    s.busy = true;
+    if item.hidden {
+        status_item::press_hidden(handle, item.pid, item.index, item.key());
+    } else {
+        let (pid, index) = (item.pid, item.index);
+        std::thread::spawn(move || {
+            items::press(pid, index);
+            let _ = handle.update(|s, _| s.busy = false);
+        });
+    }
+}
+
 fn window_height(s: &State) -> f32 {
     match s.mode {
         Mode::Welcome => WELCOME_HEIGHT,
+        Mode::Search => SEARCH_HEIGHT,
         Mode::Settings => settings_height(s.items.len(), s.advanced),
         Mode::Strip => s.look.cell() + 2.0 * s.look.padding,
     }
@@ -232,6 +271,7 @@ fn window_height(s: &State) -> f32 {
 pub fn window_size(mode: Mode) -> (f32, f32) {
     let height = match mode {
         Mode::Welcome => WELCOME_HEIGHT,
+        Mode::Search => SEARCH_HEIGHT,
         Mode::Settings => settings_height(ITEM_COUNT.load(Ordering::Relaxed), ADVANCED_OPEN.load(Ordering::Relaxed)),
         Mode::Strip => look().cell() + 2.0 * look().padding,
     };
@@ -400,6 +440,7 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
         Mode::Strip => strip_view(s, dark),
         Mode::Settings => settings_view(s, dark),
         Mode::Welcome => welcome_view(s, dark),
+        Mode::Search => search_view(s, dark),
     }
 }
 
@@ -441,6 +482,32 @@ fn hairline(dark: bool) -> El {
 /// A small label over a group of rows.
 fn section_label(label: &str, dark: bool) -> El {
     text(label).font(TextStyle::new(11.0, 600.0)).color(tok::theme(dark).text_secondary).h(SECTION_LABEL)
+}
+
+fn search_view(s: &State, dark: bool) -> El {
+    let t = tok::theme(dark);
+    let found: Vec<Item> = search_results(s).into_iter().take(SEARCH_ROWS).cloned().collect();
+    let first = found.first().cloned();
+    let input = text_input(&s.query, TextStyle::new(15.0, 450.0))
+        .on_edit(|s: &mut State| &mut s.query)
+        .on_submit(move |s: &mut State, tx| {
+            if let Some(item) = &first {
+                open_item(s, tx, item);
+            }
+        })
+        .autofocus()
+        .label("Search menu bar icons")
+        .w_full()
+        .h(SEARCH_BOX);
+    let rows = found.into_iter().enumerate().map(|(i, item)| {
+        let name = item.name.clone();
+        let icon = picture(&item, 22.0, dark);
+        row().key(format!("result-{i}")).role("button").label(name.as_str()).hit().w_full().h(ROW).center_y().gap(12.0)
+            .on_press_tx(move |s: &mut State, tx| open_item(s, tx, &item))
+            .child(icon)
+            .child(text(name).font(TextStyle::new(13.5, 450.0)).color(t.text))
+    });
+    glass(WINDOW_RADIUS).padding(PAD).child(input).child(hairline(dark)).children(rows)
 }
 
 fn settings_view(s: &State, dark: bool) -> El {
@@ -669,6 +736,7 @@ fn main() {
             ("strip", |s| { demo_items(s); s.mode = Mode::Strip; }),
             ("settings", |s| { demo_items(s); s.mode = Mode::Settings; }),
             ("advanced", |s| { demo_items(s); s.mode = Mode::Settings; s.advanced = true; }),
+            ("search", |s| { demo_items(s); s.query = rune::TextEdit::new("b"); s.mode = Mode::Search; }),
             ("welcome", |s| { demo_items(s); s.mode = Mode::Welcome; }),
             ("welcome-blocked", |s| { s.permission = false; s.mode = Mode::Welcome; }),
         ],
@@ -763,6 +831,23 @@ mod tests {
         rt.frame(0.0);
         assert!(rt.state.look.icon >= 44.0, "icon size is {}", rt.state.look.icon);
         *LOOK.lock().unwrap() = Look::DEFAULT;
+    }
+
+    #[test]
+    fn search_matches_letters_in_order() {
+        assert!(matches("Moneta", "mt"));
+        assert!(matches("Moneta", "MO"));
+        assert!(!matches("Moneta", "tm"));
+        assert!(matches("Wi-Fi", ""));
+    }
+
+    #[test]
+    fn search_lists_only_matching_items() {
+        let mut state = State::default();
+        demo_items(&mut state);
+        state.query = rune::TextEdit::new("bat");
+        let names: Vec<_> = search_results(&state).into_iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["Battery"]);
     }
 
     #[test]

@@ -114,6 +114,11 @@ declare_class!(
             open(&self.ivars().handle, Mode::Settings);
         }
 
+        #[method(search:)]
+        fn search(&self, _sender: &AnyObject) {
+            open(&self.ivars().handle, Mode::Search);
+        }
+
         #[method(quit:)]
         fn quit(&self, _sender: &AnyObject) {
             // Bring every hidden icon back first, so quitting never leaves the bar changed.
@@ -128,7 +133,7 @@ impl Clicker {
     /// attach it, click, and take it off again so left clicks keep working.
     fn show_menu(&self, mtm: MainThreadMarker) {
         let menu = NSMenu::new(mtm);
-        for (title, action) in [("Settings…", sel!(settings:)), ("Quit", sel!(quit:))] {
+        for (title, action) in [("Search…", sel!(search:)), ("Settings…", sel!(settings:)), ("Quit", sel!(quit:))] {
             let item = unsafe {
                 NSMenuItem::initWithTitle_action_keyEquivalent(
                     mtm.alloc(), &NSString::from_str(title), Some(action), &NSString::from_str(""),
@@ -185,6 +190,7 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
     KEEP_OPEN.store(mode == Mode::Welcome, Ordering::Relaxed);
     handle.update(move |s, tx| {
         s.mode = mode;
+        s.query = rune::TextEdit::new("");
         crate::fit(s, tx);
     });
     if mode != Mode::Welcome {
