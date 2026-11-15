@@ -5,7 +5,7 @@
 use std::ffi::c_void;
 use std::time::Duration;
 
-use objc2_app_kit::NSWorkspace;
+use objc2_app_kit::{NSApplicationActivationPolicy, NSWorkspace};
 use rune::prefs::Prefs;
 use rune::AppHandle;
 
@@ -106,21 +106,37 @@ fn in_range(now: u32, start: u32, end: u32) -> bool {
     if start <= end { now >= start && now < end } else { now >= start || now < end }
 }
 
-fn app_is_running(name: &str) -> bool {
-    let name = name.trim().to_lowercase();
-    unsafe {
+/// The names of the apps that are open and have a window or a Dock icon, sorted.
+pub fn running_app_names() -> Vec<String> {
+    let mut names: Vec<String> = unsafe {
         NSWorkspace::sharedWorkspace()
             .runningApplications()
             .iter()
-            .any(|app| app.localizedName().is_some_and(|n| n.to_string().to_lowercase().contains(&name)))
-    }
+            .filter(|app| app.activationPolicy() == NSApplicationActivationPolicy::Regular)
+            .filter_map(|app| app.localizedName().map(|n| n.to_string()))
+            .collect()
+    };
+    names.sort_by_key(|n| n.to_lowercase());
+    names.dedup();
+    names
+}
+
+/// The app names in a trigger's text: one or more, separated by a bar.
+pub fn app_names(text: &str) -> impl Iterator<Item = &str> {
+    text.split('|').map(str::trim).filter(|n| !n.is_empty())
+}
+
+/// True when any of the named apps is open.
+fn app_is_running(text: &str) -> bool {
+    let running = running_app_names();
+    app_names(text).any(|wanted| running.iter().any(|n| n.eq_ignore_ascii_case(wanted)))
 }
 
 /// Whether the text of a trigger makes sense for its kind.
 pub fn is_valid(kind: &str, text: &str) -> bool {
     match kind {
         TIME => parse_range(text).is_some(),
-        APP => !text.trim().is_empty(),
+        APP => app_names(text).next().is_some(),
         _ => true,
     }
 }
@@ -131,7 +147,10 @@ pub fn describe(kind: &str, text: &str) -> String {
         BATTERY => "On battery".into(),
         PLUGGED => "Plugged in".into(),
         TIME => text.replace('-', " – "),
-        _ => format!("{} is running", text.trim()),
+        _ => {
+            let names: Vec<&str> = app_names(text).collect();
+            format!("{} is open", names.join(" or "))
+        }
     }
 }
 
@@ -197,15 +216,18 @@ mod tests {
         assert!(minutes_now() < 24 * 60);
         // Exactly one of "on battery" and "plugged in" is true.
         assert_ne!(is_true(BATTERY, ""), is_true(PLUGGED, ""));
-        assert!(app_is_running("finder"));
+        assert!(app_is_running("Finder"));
+        assert!(app_is_running("no such app|finder"));
         assert!(!app_is_running("no such app anywhere"));
+        assert!(running_app_names().iter().any(|n| n == "Finder"));
     }
 
     #[test]
     fn words_describe_a_trigger() {
         assert_eq!(describe(BATTERY, ""), "On battery");
         assert_eq!(describe(TIME, "09:00-18:00"), "09:00 – 18:00");
-        assert_eq!(describe(APP, " Xcode "), "Xcode is running");
+        assert_eq!(describe(APP, " Xcode "), "Xcode is open");
+        assert_eq!(describe(APP, "Xcode|Slack"), "Xcode or Slack is open");
         assert!(is_valid(PLUGGED, ""));
         assert!(!is_valid(APP, "  "));
     }

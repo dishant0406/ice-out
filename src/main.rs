@@ -36,6 +36,9 @@ pub struct Draft {
     pub kind: String,
     pub text: rune::TextEdit,
     pub preset: Option<String>,
+    /// For "an app is open": the apps to choose from, and the ones chosen.
+    pub apps: Vec<String>,
+    pub chosen: Vec<String>,
 }
 
 pub const APP_ID: &str = "dev.iceout";
@@ -49,6 +52,8 @@ const SECTION_GAP: f32 = 14.0;
 const PREVIEW_HEIGHT: f32 = 96.0;
 /// How many presets the new-trigger form lists.
 const FORM_PRESETS: usize = 4;
+/// How many apps show at once in the new-trigger form; the rest scroll.
+const APP_ROWS: usize = 4;
 const SEARCH_BOX: f32 = 40.0;
 const SEARCH_PAD: f32 = 12.0;
 /// The space between the search box and the results.
@@ -307,9 +312,13 @@ fn triggers_height(s: &State) -> f32 {
     let Some(draft) = &s.draft else {
         return top + s.triggers.len().clamp(1, SEARCH_ROWS) as f32 * ROW + 0.5 + SEARCH_GAP + ROW;
     };
-    let text_box = if draft.kind == triggers::TIME || draft.kind == triggers::APP { SEARCH_BOX } else { 0.0 };
+    let extra = match draft.kind.as_str() {
+        triggers::TIME => SEARCH_BOX,
+        triggers::APP => draft.apps.len().clamp(1, APP_ROWS) as f32 * ROW,
+        _ => 0.0,
+    };
     let presets = s.presets.len().clamp(1, FORM_PRESETS) as f32 * ROW;
-    top + SECTION_LABEL + 4.0 * ROW + text_box + SECTION_LABEL + presets + SEARCH_GAP + ROW
+    top + SECTION_LABEL + 4.0 * ROW + extra + SECTION_GAP + SECTION_LABEL + presets + SEARCH_GAP + ROW
 }
 
 /// Saves the icons that are hidden now under the typed name, replacing a preset of that name.
@@ -686,13 +695,13 @@ fn presets_view(s: &State, dark: bool) -> El {
     glass(WINDOW_RADIUS).key("presets-screen").padding(SEARCH_PAD).child(header).children(rows).children(none).child(hairline(dark)).child(el().h(SEARCH_GAP)).child(input)
 }
 
-/// A row with a dot: filled when chosen. Used for the choices in the new-trigger form.
-fn choice(key: String, label: &str, chosen: bool, dark: bool, on_press: impl Fn(&mut State, &mut Tx) + 'static) -> El {
+/// A row with a dot (a square when several can be chosen): filled when chosen. Used in the new-trigger form.
+fn choice(key: String, label: &str, chosen: bool, multi: bool, dark: bool, on_press: impl Fn(&mut State, &mut Tx) + 'static) -> El {
     let t = tok::theme(dark);
     let dot = if chosen { tok::accent(0, dark) } else { line_fill(dark) };
     row().key(key).role("radio").label(label).checked(chosen).hit().w_full().h(ROW).center_y().px(6.0).gap(12.0)
         .on_press_tx(on_press)
-        .child(el().size(8.0, 8.0).radius(4.0).fill(dot).a11y_hidden())
+        .child(el().size(8.0, 8.0).radius(if multi { 2.0 } else { 4.0 }).fill(dot).a11y_hidden())
         .child(text(label).font(TextStyle::new(13.5, 450.0)).color(t.text))
 }
 
@@ -749,43 +758,74 @@ fn trigger_list(s: &State, dark: bool) -> El {
     col().w_full().children(rows).children(none).child(hairline(dark)).child(el().h(SEARCH_GAP)).child(add)
 }
 
+/// The text a finished form stores: the two times, or the chosen apps joined by a bar.
+fn trigger_text(draft: &Draft) -> String {
+    match draft.kind.as_str() {
+        triggers::TIME => draft.text.text.trim().to_string(),
+        triggers::APP => draft.chosen.join("|"),
+        _ => String::new(),
+    }
+}
+
 fn trigger_form(s: &State, draft: &Draft, dark: bool) -> El {
     let t = tok::theme(dark);
     let kinds = [(triggers::BATTERY, "On battery"), (triggers::PLUGGED, "Plugged in"), (triggers::TIME, "Between two times"), (triggers::APP, "An app is running")];
     let when = kinds.into_iter().map(|(kind, label)| {
-        choice(format!("kind-{kind}"), label, draft.kind == kind, dark, move |s: &mut State, tx| {
+        choice(format!("kind-{kind}"), label, draft.kind == kind, false, dark, move |s: &mut State, tx| {
             if let Some(d) = &mut s.draft {
                 d.kind = kind.into();
+                if kind == triggers::APP && d.apps.is_empty() {
+                    d.apps = triggers::running_app_names();
+                }
             }
             fit(s, tx);
         })
     });
-    let hint = if draft.kind == triggers::TIME { Some("09:00-18:00") } else if draft.kind == triggers::APP { Some("App name, like Xcode") } else { None };
-    let text_box = hint.map(|hint| {
+    // A time range is typed. Apps are picked from the ones that are open, one or several.
+    let time_box = (draft.kind == triggers::TIME).then(|| {
         let field = text_input(&draft.text, TextStyle::new(14.0, 450.0))
             .on_edit(|s: &mut State| &mut s.draft.as_mut().expect("a draft is open").text)
             .key("trigger-text")
             .single_line()
-            .placeholder(hint, t.text_secondary)
-            .label("What the trigger waits for")
+            .placeholder("09:00-18:00", t.text_secondary)
+            .label("The two times")
             .grow(1.0);
         // Lined up with the choices above, with a thin line under it so it reads as a box.
         col().w_full().child(row().w_full().h(SEARCH_BOX - 0.5).pl(26.0).center_y().child(field)).child(hairline(dark))
     });
+    let app_list = (draft.kind == triggers::APP).then(|| {
+        let rows = draft.apps.iter().enumerate().map(|(i, name)| {
+            let toggled = name.clone();
+            let chosen = draft.chosen.contains(name);
+            choice(format!("app-{i}"), name, chosen, true, dark, move |s: &mut State, _| {
+                if let Some(d) = &mut s.draft {
+                    match d.chosen.iter().position(|n| *n == toggled) {
+                        Some(at) => {
+                            d.chosen.remove(at);
+                        }
+                        None => d.chosen.push(toggled.clone()),
+                    }
+                }
+            })
+        });
+        let none = draft.apps.is_empty().then(|| row().w_full().h(ROW).center_y().pl(6.0).child(text("No apps are open").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary)));
+        let height = draft.apps.len().clamp(1, APP_ROWS) as f32 * ROW;
+        col().key("apps").w_full().pl(20.0).h(height).scroll(ScrollSpec { stick_bottom: false }).children(rows).children(none)
+    });
     let presets = s.presets.iter().take(FORM_PRESETS).enumerate().map(|(i, preset)| {
         let name = preset.0.clone();
-        choice(format!("pick-{i}"), &preset.0, draft.preset.as_deref() == Some(preset.0.as_str()), dark, move |s: &mut State, _| {
+        choice(format!("pick-{i}"), &preset.0, draft.preset.as_deref() == Some(preset.0.as_str()), false, dark, move |s: &mut State, _| {
             if let Some(d) = &mut s.draft {
                 d.preset = Some(name.clone());
             }
         })
     });
-    let ready = draft.preset.is_some() && triggers::is_valid(&draft.kind, &draft.text.text);
+    let ready = draft.preset.is_some() && triggers::is_valid(&draft.kind, &trigger_text(draft));
     let save = if ready {
         row().key("trigger-save").role("button").label("Add trigger").hit().w_full().h(ROW).center_y().px(6.0)
             .on_press_tx(|s: &mut State, tx| {
                 if let Some(d) = s.draft.take() {
-                    let arg = if d.kind == triggers::TIME || d.kind == triggers::APP { d.text.text.trim().to_string() } else { String::new() };
+                    let arg = trigger_text(&d);
                     s.triggers.push((d.kind, arg, d.preset.unwrap_or_default()));
                     s.last_trigger = None;
                     triggers::save(s.triggers.clone());
@@ -800,7 +840,9 @@ fn trigger_form(s: &State, draft: &Draft, dark: bool) -> El {
     col().w_full()
         .child(section_label("WHEN", dark))
         .children(when)
-        .children(text_box)
+        .children(time_box)
+        .children(app_list)
+        .child(el().h(SECTION_GAP))
         .child(section_label("APPLY", dark))
         .children(presets)
         .child(el().h(SEARCH_GAP))
@@ -1091,7 +1133,14 @@ fn main() {
             ("trigger-form", |s| {
                 demo_items(s);
                 s.presets = vec![("Work".into(), vec![]), ("Focus".into(), vec![])];
-                s.draft = Some(Draft { kind: "time".into(), text: rune::TextEdit::new("09:00-18:00"), preset: Some("Work".into()) });
+                s.draft = Some(Draft { kind: "time".into(), text: rune::TextEdit::new("09:00-18:00"), preset: Some("Work".into()), ..Draft::default() });
+                s.mode = Mode::Triggers;
+            }),
+            ("trigger-apps", |s| {
+                demo_items(s);
+                s.presets = vec![("Work".into(), vec![]), ("Focus".into(), vec![])];
+                let apps: Vec<String> = ["Calendar", "Finder", "Notes", "Slack", "Xcode", "Zoom"].into_iter().map(String::from).collect();
+                s.draft = Some(Draft { kind: "app".into(), apps, chosen: vec!["Slack".into(), "Zoom".into()], preset: Some("Focus".into()), ..Draft::default() });
                 s.mode = Mode::Triggers;
             }),
             ("welcome", |s| { demo_items(s); s.mode = Mode::Welcome; }),

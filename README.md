@@ -33,7 +33,7 @@ So Ice Out asks for the smallest permission it can, and it is built to be light.
 - **Search.** Right-click the icon, then Search. Type a few letters and open any icon.
 - **Keyboard shortcuts.** Hold I (for Ice) + Option + Command, then press Space to show the hidden icons or F to search. One switch in Settings, with the keys in a small line under it.
 - **Presets.** Save the hidden icons under a name (Settings, then Presets). Switch from there or from the right-click menu. Only the icons that differ move.
-- **Triggers.** Apply a preset on its own: on battery, plugged in, between two times, or when an app is running. Checked every 30 seconds. No extra permission.
+- **Triggers.** Apply a preset on its own: on battery, plugged in, between two times, or when one of the apps you pick is open. Checked every 30 seconds. No extra permission.
 - **Open at login.** One switch.
 - **First-launch setup.** It walks you through allowing Accessibility.
 - **Quit puts everything back.** If you quit Ice Out, your bar is the way it was.
