@@ -1,0 +1,125 @@
+name: Release
+
+# One button for a release. Run it from the Actions tab and type the version, like 1.0.0.
+# It checks the code, builds and signs the app, and only when all of that works does it set the
+# version in Cargo.toml, commit that to main, tag it (v<version>) and publish the release with
+# Iceout.dmg. A failed run leaves no commit and no tag, so the same version can be run again.
+#
+# Signing: with the secrets below set, the app is signed with the Developer ID certificate and
+# Apple notarises the installer. Without them it is signed ad hoc, and macOS asks on first open.
+#   MACOS_CERTIFICATE (base64 .p12), MACOS_CERTIFICATE_PASSWORD,
+#   APPLE_API_KEY (base64 .p8), APPLE_API_KEY_ID, APPLE_API_ISSUER
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, like 1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "\"$VERSION\" is not a version like 1.0.0." >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null; then
+            echo "v$VERSION already exists. Release a new version instead." >&2
+            exit 1
+          fi
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Set the version in Cargo.toml
+        env:
+          VERSION: ${{ inputs.version }}
+        run: sed -i '' "1,/^version = /s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+
+      - name: Test
+        run: |
+          cargo clippy --release -- -D warnings
+          cargo test --release
+
+      - name: Import the signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then echo "No signing certificate: the app is signed ad hoc."; exit 0; fi
+          keychain="$RUNNER_TEMP/build.keychain"
+          password=$(uuidgen)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # Apple's intermediate certificate, which a fresh runner may not have.
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/g2.cer"
+          security import "$RUNNER_TEMP/g2.cer" -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$keychain"
+          echo "SIGN_IDENTITY=Developer ID Application: Dishant Sharma (689N5CNAYJ)" >> "$GITHUB_ENV"
+          if [ -n "$APPLE_API_KEY" ]; then
+            echo "$APPLE_API_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+            echo "NOTARY_KEY_FILE=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+            echo "NOTARY_KEY_ID=$APPLE_API_KEY_ID" >> "$GITHUB_ENV"
+            echo "NOTARY_ISSUER=$APPLE_API_ISSUER" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the app and the installer
+        run: ./scripts/package.sh
+
+      - name: Check what was built
+        run: |
+          mount=$(mktemp -d)
+          hdiutil attach dist/Iceout.dmg -mountpoint "$mount" -nobrowse -readonly > /dev/null
+          trap 'hdiutil detach "$mount" > /dev/null' EXIT
+          codesign --verify --deep --strict "$mount/Iceout.app"
+          # Signed and notarised: Gatekeeper must accept it as it is.
+          if [ -n "${NOTARY_KEY_FILE:-}" ]; then
+            spctl --assess --type exec -vv "$mount/Iceout.app"
+            xcrun stapler validate dist/Iceout.dmg
+          fi
+          # Everything the app loads must be inside it or part of macOS.
+          if otool -L "$mount/Iceout.app/Contents/MacOS/iceout" | grep -E '/opt/homebrew|/usr/local/'; then
+            echo "The app loads a library from outside itself." >&2
+            exit 1
+          fi
+          # Named by the file alone, so `shasum -c` works from wherever it was downloaded to.
+          (cd dist && shasum -a 256 Iceout.dmg | tee Iceout.dmg.sha256)
+
+      - name: Commit the version, tag it and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The build has updated Cargo.lock too.
+          git commit -am "Version $VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+          if [ -n "${NOTARY_KEY_FILE:-}" ]; then
+            notes="Open the installer and drag Ice Out onto Applications. Signed with an Apple Developer ID and notarised by Apple."
+          else
+            notes="Open the installer and drag Ice Out onto Applications. This build is signed ad hoc, so macOS asks the first time: press Open Anyway in System Settings > Privacy & Security."
+          fi
+          gh release create "v$VERSION" dist/Iceout.dmg dist/Iceout.dmg.sha256 --title "Ice Out $VERSION" --notes "$notes" --verify-tag

@@ -140,6 +140,16 @@ A preset is a name and the list of icons that are hidden. Applying one moves onl
 - **Switching between Settings and Presets resizes the window at once.** An animated resize stretched the icons for a moment (the content is drawn for the new size while the window is still growing). `fit_instant` skips the animation. The Appearance section and search results still animate, because there the content moves with the window.
 - **Each full screen has its own key** (`settings-screen`, `presets-screen`). Without one, Rune matches the first child of Settings (the logo) with the first child of Presets (a title) by position and animates one into the other, which looked like the logo stretching.
 
+## Releases
+
+One workflow, `.github/workflows/release.yml`, does a whole release from one input, the version. The shape follows the Akidev release workflow.
+
+- **The version is the only input.** It is checked (`1.2.3`), written into `Cargo.toml` on the runner, and `scripts/package.sh` reads it from there for the app's `Info.plist`. Before this the script had `0.1.0` written in it, which is a second place to forget.
+- **Build first, commit after.** The workflow does not commit or tag until the tests, the build and the checks have passed. Then it pushes `Version X` to `main` and the tag `vX` together and creates the release. A failed run leaves nothing behind, so the same version can be run again. The other way (tag first, like the Akidev one) leaves a dead tag after every failure. The price: if someone pushes to `main` while the build runs, the final push is refused and the run fails. Then run it again.
+- **Signing is optional by design.** With the five secrets the app is signed with the Developer ID certificate using the hardened runtime and a timestamp (Apple asks for both), the installer is signed, Apple notarises it and the result is stapled. Without them it falls back to the ad-hoc signature, and the release notes say so. This keeps the workflow usable on a fork or before the certificate is set up. The check step fails the build if a signed app is not accepted by Gatekeeper (`spctl`) or the stapled ticket is missing.
+- **Checks on the result.** `codesign --verify --deep --strict` on the app inside the installer, and no link to `/opt/homebrew` or `/usr/local` (a library that exists only on the build machine).
+- **Rejected:** a Homebrew cask (not asked for yet), building for Intel too (one runner type, Apple silicon, is enough for now), and a version bump from the last tag (typing the version is clearer and cannot surprise).
+
 ## Triggers
 
 A trigger says "when this is true, apply that preset". Four kinds, none needs a permission: on battery, plugged in, between two times, an app is open.

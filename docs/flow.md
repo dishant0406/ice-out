@@ -93,6 +93,19 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 6. Delete a trigger with the x. Deleting a preset removes the triggers that use it.
 7. A time range that crosses midnight (`22:00-06:00`) works. An app trigger is true when any ticked app is open (whole name, ignoring case).
 
+## Making a release
+
+1. You run **Release** in the Actions tab and type a version.
+2. The workflow stops at once if the version is not `1.2.3` or the tag `v1.2.3` exists.
+3. It writes the version into `Cargo.toml`, runs clippy (no warnings allowed) and `cargo test`. A failure here stops the run and nothing is changed in the repo.
+4. If the signing secrets are set, it imports the certificate into a temporary keychain and, with the Apple key too, sets up notarisation. No secrets: ad-hoc signing.
+5. `scripts/package.sh` builds the app and the installer, signs them, and (with the key) waits for Apple and staples the ticket.
+6. A check opens the installer and verifies the signature, Gatekeeper and the libraries. A failure stops the run.
+7. It commits `Version 1.2.3` (with the updated `Cargo.lock`), tags `v1.2.3`, pushes both, and publishes the release with `Iceout.dmg` and `Iceout.dmg.sha256`.
+8. You run `git pull` to get the version commit.
+
+Edge cases: a failed run leaves no commit or tag, so run the same version again. If `main` moved during the run, the push is refused and the release is not made: run it again. Running a version twice is refused at step 2.
+
 ## Closing
 
 Done, a click on the Iceout icon, or a click anywhere else (global mouse monitor) hides the window.

@@ -156,7 +156,6 @@ Built, but **not tested live yet** (please try them and tell me):
 - Triggers for Wi-Fi and Focus (they need extra permissions, so they would be opt-in), and more than one condition per trigger.
 - Always-hidden section.
 - Real menu bar glyphs as an optional extra (this needs Screen Recording, so it would be opt-in).
-- Developer ID signing and notarization, so other Macs open it without a warning.
 - Light mode checks and more screens.
 
 ## Known limits
@@ -168,7 +167,7 @@ Built, but **not tested live yet** (please try them and tell me):
 
 ## Install
 
-1. Open `Ice Out.dmg`.
+1. Download `Iceout.dmg` from the [latest release](https://github.com/dishant0406/ice-out/releases/latest) and open it.
 2. Drag **Ice Out** into **Applications**.
 3. Open it. Follow the welcome window and allow Accessibility.
 
@@ -176,7 +175,21 @@ Built, but **not tested live yet** (please try them and tell me):
   <img src="docs/images/installer.png" alt="The installer" width="80%">
 </p>
 
-The app is signed ad hoc for now. On another Mac, macOS will ask you to confirm you want to open it.
+A release says in its notes how it is signed. A release signed with a Developer ID and notarised by Apple opens with no warning. One signed ad hoc makes macOS ask the first time: press **Open Anyway** in System Settings > Privacy & Security.
+
+### Make a release
+
+Releases are made by one GitHub workflow, `.github/workflows/release.yml`. Open the **Actions** tab, choose **Release**, press **Run workflow**, and type the version (like `1.0.0`). That is all. The workflow:
+
+1. checks the version looks like `1.2.3` and is not used yet,
+2. sets it in `Cargo.toml`, then runs clippy and the tests,
+3. builds the app, signs it and makes `Iceout.dmg` (`scripts/package.sh`),
+4. checks the signature and that the app loads no library from outside itself,
+5. only then commits `Version 1.0.0` to `main`, tags `v1.0.0` and publishes the release with the installer and its checksum.
+
+If any step fails, nothing is committed or tagged, so you can fix it and run the same version again. After a release, `git pull` to get the version commit.
+
+Signing needs five repository secrets (Settings > Secrets and variables > Actions): `MACOS_CERTIFICATE` (the Developer ID `.p12`, in base64), `MACOS_CERTIFICATE_PASSWORD`, `APPLE_API_KEY` (the App Store Connect `.p8`, in base64), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. Without them the workflow still works and signs ad hoc.
 
 ### Build it yourself
 

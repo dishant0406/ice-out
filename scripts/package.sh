@@ -3,11 +3,16 @@
 # Needs: Rust, the Xcode command line tools, Google Chrome (only to draw the installer picture),
 # and network the first time (to fetch dmgbuild, a build tool that only writes the installer
 # window's layout; it is not part of the app).
+#
+# With SIGN_IDENTITY set (a "Developer ID Application: ..." name) the app and the installer are
+# signed with it. With NOTARY_KEY_FILE, NOTARY_KEY_ID and NOTARY_ISSUER too, Apple checks the
+# installer and the result is stapled to it, so other Macs open the app with no warning. Without
+# them the app is signed ad hoc.
 set -e
 cd "$(dirname "$0")/.."
 
 OUT=dist
-VERSION=0.1.0
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
@@ -49,9 +54,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# An ad-hoc signature is enough to run on this Mac. Sending the app to other Macs needs a
-# Developer ID signature and notarization.
-codesign --force --sign - "$APP"
+# An ad-hoc signature is enough to run on this Mac. Other Macs need a Developer ID signature
+# (with the hardened runtime and a timestamp, which Apple asks for) and notarization.
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+else
+    codesign --force --sign - "$APP"
+fi
 
 echo "Making the installer..."
 ./scripts/render-dmg-background.sh "$OUT/background.tiff"
@@ -60,5 +69,15 @@ python3 -m venv "$OUT/.venv"
 "$OUT/.venv/bin/pip" install -q dmgbuild
 "$OUT/.venv/bin/dmgbuild" -s scripts/dmg-settings.py \
     -D app="$APP" -D background="$OUT/background.tiff" -D icon="$OUT/volume.icns" Iceout "$OUT/Iceout.dmg"
+
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+    codesign --force --timestamp --sign "$SIGN_IDENTITY" "$OUT/Iceout.dmg"
+    if [ -n "${NOTARY_KEY_FILE:-}" ]; then
+        echo "Asking Apple to check it (a few minutes)..."
+        xcrun notarytool submit "$OUT/Iceout.dmg" --key "$NOTARY_KEY_FILE" --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER" --wait --timeout 30m
+        xcrun stapler staple "$OUT/Iceout.dmg"
+    fi
+fi
 
 echo "Done: $OUT/Iceout.dmg"
