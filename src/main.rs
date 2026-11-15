@@ -36,8 +36,9 @@ pub struct Draft {
     pub kind: String,
     pub text: rune::TextEdit,
     pub preset: Option<String>,
-    /// For "an app is open": the apps to choose from, and the ones chosen.
+    /// For "an app is open": every installed app to choose from, a box to narrow them, and the ones chosen.
     pub apps: Vec<String>,
+    pub filter: rune::TextEdit,
     pub chosen: Vec<String>,
 }
 
@@ -314,7 +315,7 @@ fn triggers_height(s: &State) -> f32 {
     };
     let extra = match draft.kind.as_str() {
         triggers::TIME => SEARCH_BOX,
-        triggers::APP => draft.apps.len().clamp(1, APP_ROWS) as f32 * ROW,
+        triggers::APP => SEARCH_BOX + APP_ROWS as f32 * ROW,
         _ => 0.0,
     };
     let presets = s.presets.len().clamp(1, FORM_PRESETS) as f32 * ROW;
@@ -775,7 +776,7 @@ fn trigger_form(s: &State, draft: &Draft, dark: bool) -> El {
             if let Some(d) = &mut s.draft {
                 d.kind = kind.into();
                 if kind == triggers::APP && d.apps.is_empty() {
-                    d.apps = triggers::running_app_names();
+                    d.apps = triggers::installed_app_names();
                 }
             }
             fit(s, tx);
@@ -794,7 +795,16 @@ fn trigger_form(s: &State, draft: &Draft, dark: bool) -> El {
         col().w_full().child(row().w_full().h(SEARCH_BOX - 0.5).pl(26.0).center_y().child(field)).child(hairline(dark))
     });
     let app_list = (draft.kind == triggers::APP).then(|| {
-        let rows = draft.apps.iter().enumerate().map(|(i, name)| {
+        let field = text_input(&draft.filter, TextStyle::new(14.0, 450.0))
+            .on_edit(|s: &mut State| &mut s.draft.as_mut().expect("a draft is open").filter)
+            .key("app-filter")
+            .single_line()
+            .placeholder("Search your apps", t.text_secondary)
+            .label("Search your apps")
+            .grow(1.0);
+        let filter = col().w_full().child(row().w_full().h(SEARCH_BOX - 0.5).pl(26.0).center_y().child(field)).child(hairline(dark));
+        let shown = draft.apps.iter().filter(|name| matches(name, &draft.filter.text));
+        let rows = shown.enumerate().map(|(i, name)| {
             let toggled = name.clone();
             let chosen = draft.chosen.contains(name);
             choice(format!("app-{i}"), name, chosen, true, dark, move |s: &mut State, _| {
@@ -808,9 +818,11 @@ fn trigger_form(s: &State, draft: &Draft, dark: bool) -> El {
                 }
             })
         });
-        let none = draft.apps.is_empty().then(|| row().w_full().h(ROW).center_y().pl(6.0).child(text("No apps are open").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary)));
-        let height = draft.apps.len().clamp(1, APP_ROWS) as f32 * ROW;
-        col().key("apps").w_full().pl(20.0).h(height).scroll(ScrollSpec { stick_bottom: false }).children(rows).children(none)
+        let none = draft.apps.iter().all(|name| !matches(name, &draft.filter.text))
+            .then(|| row().w_full().h(ROW).center_y().pl(26.0).child(text("No app found").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary)));
+        // The list keeps one height, so the window does not jump while you type.
+        let list = col().key("apps").w_full().pl(20.0).h(APP_ROWS as f32 * ROW).scroll(ScrollSpec { stick_bottom: false }).children(rows).children(none);
+        col().w_full().child(filter).child(list)
     });
     let presets = s.presets.iter().take(FORM_PRESETS).enumerate().map(|(i, preset)| {
         let name = preset.0.clone();

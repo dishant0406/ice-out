@@ -106,18 +106,41 @@ fn in_range(now: u32, start: u32, end: u32) -> bool {
     if start <= end { now >= start && now < end } else { now >= start || now < end }
 }
 
-/// The names of the apps that are open and have a window or a Dock icon, sorted.
-pub fn running_app_names() -> Vec<String> {
-    let mut names: Vec<String> = unsafe {
-        NSWorkspace::sharedWorkspace()
-            .runningApplications()
-            .iter()
-            .filter(|app| app.activationPolicy() == NSApplicationActivationPolicy::Regular)
-            .filter_map(|app| app.localizedName().map(|n| n.to_string()))
-            .collect()
-    };
+/// The names of every app installed: the .app folders in the usual places, sorted.
+pub fn installed_app_names() -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let places = [
+        "/Applications".to_string(),
+        "/Applications/Utilities".to_string(),
+        "/System/Applications".to_string(),
+        "/System/Applications/Utilities".to_string(),
+        format!("{home}/Applications"),
+    ];
+    let mut names: Vec<String> = places
+        .iter()
+        .filter_map(|place| std::fs::read_dir(place).ok())
+        .flatten()
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.strip_suffix(".app").map(String::from))
+        .collect();
     names.sort_by_key(|n| n.to_lowercase());
     names.dedup();
+    names
+}
+
+/// The names of the apps that are open, as the system calls them and as their folders are called
+/// ("Google Chrome" and "Google Chrome.app" usually agree, but not always).
+fn running_app_names() -> Vec<String> {
+    let mut names = Vec::new();
+    unsafe {
+        for app in NSWorkspace::sharedWorkspace().runningApplications().iter() {
+            if app.activationPolicy() != NSApplicationActivationPolicy::Regular {
+                continue;
+            }
+            names.extend(app.localizedName().map(|n| n.to_string()));
+            let folder = app.bundleURL().and_then(|url| url.path()).map(|p| p.to_string());
+            names.extend(folder.and_then(|p| Some(std::path::Path::new(&p).file_stem()?.to_str()?.to_string())));
+        }
+    }
     names
 }
 
@@ -219,7 +242,7 @@ mod tests {
         assert!(app_is_running("Finder"));
         assert!(app_is_running("no such app|finder"));
         assert!(!app_is_running("no such app anywhere"));
-        assert!(running_app_names().iter().any(|n| n == "Finder"));
+        assert!(installed_app_names().iter().any(|n| n == "Safari" || n == "Finder"));
     }
 
     #[test]

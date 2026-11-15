@@ -86,7 +86,7 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 ## Triggers
 
 1. Settings, then the "Triggers" row, opens `Mode::Triggers` (`triggers_view`). With no trigger it says "No triggers yet". With no preset it says to save a preset first.
-2. "New trigger" opens the form (`State.draft`): pick WHEN (a dot), type a time range like `09:00-18:00`, or tick one or more of the open apps (the list is read when you choose "An app is running"), pick the preset to APPLY. "Add trigger" is grey until the form is valid (`triggers::is_valid`): a time range must parse, at least one app must be ticked, and a preset must be chosen.
+2. "New trigger" opens the form (`State.draft`): pick WHEN (a dot), type a time range like `09:00-18:00`, or search and tick one or more of your installed apps (the folders are read when you choose "An app is running"), pick the preset to APPLY. "Add trigger" is grey until the form is valid (`triggers::is_valid`): a time range must parse, at least one app must be ticked, and a preset must be chosen.
 3. Add: the trigger is saved (`triggers::save`) and checked at once (`triggers::evaluate`). Back leaves the form first, then the list.
 4. Every 30 seconds `triggers::start` calls `evaluate` on the main thread. The last true trigger in the list wins. If the winner is different from last time, its preset is applied (`apply_preset`), and `last_trigger` remembers it. No winner clears `last_trigger`, so the same trigger fires again next time it becomes true.
 5. No Accessibility: nothing is checked. Icons moving: `apply_preset` says no, and the check is repeated in 30 seconds.
