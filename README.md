@@ -31,7 +31,7 @@ So Ice Out asks for the smallest permission it can, and it is built to be light.
 - **New apps show up in the list.** Install an app, and within about two seconds its icon is in Settings (hidden at first, like in Ice).
 - **Tune the look.** Sliders for icon size, padding, spacing and corner radius, with a live preview.
 - **Search.** Right-click the icon, then Search. Type a few letters and open any icon.
-- **Keyboard shortcuts.** Control + Option + Space shows the hidden icons. Control + Option + F searches. One switch in Settings.
+- **Keyboard shortcuts.** Option + Command + I (I for Ice) shows the hidden icons. Option + Command + F searches. One switch in Settings, with the keys in a small line under it.
 - **Open at login.** One switch.
 - **First-launch setup.** It walks you through allowing Accessibility.
 - **Quit puts everything back.** If you quit Ice Out, your bar is the way it was.

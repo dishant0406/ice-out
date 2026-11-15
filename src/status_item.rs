@@ -138,10 +138,10 @@ impl Clicker {
     /// attach it, click, and take it off again so left clicks keep working.
     fn show_menu(&self, mtm: MainThreadMarker) {
         let menu = NSMenu::new(mtm);
-        // The two shortcuts are shown beside their items, as in any Mac menu (Control + Option).
-        let shortcuts = NSEventModifierFlags::NSEventModifierFlagControl.union(NSEventModifierFlags::NSEventModifierFlagOption);
+        // The two shortcuts are shown beside their items, as in any Mac menu (Option + Command).
+        let shortcuts = NSEventModifierFlags::NSEventModifierFlagCommand.union(NSEventModifierFlags::NSEventModifierFlagOption);
         for (title, action, key) in [
-            ("Show Icons", sel!(show:), " "),
+            ("Show Icons", sel!(show:), "i"),
             ("Search…", sel!(search:), "f"),
             ("Settings…", sel!(settings:), ""),
             ("Quit", sel!(quit:), ""),

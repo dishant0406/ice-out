@@ -569,7 +569,7 @@ fn login_row(s: &State, dark: bool) -> El {
         .child(switch(s.login, dark))
 }
 
-/// One row with a switch: the keyboard shortcuts. Their keys are shown in the right-click menu.
+/// One row with a switch: the keyboard shortcuts. While on, a small line under the name shows the keys.
 fn hotkeys_row(s: &State, dark: bool) -> El {
     let t = tok::theme(dark);
     row().key("hotkeys").role("switch").label("Keyboard shortcuts").checked(s.hotkeys).hit()
@@ -582,7 +582,9 @@ fn hotkeys_row(s: &State, dark: bool) -> El {
                 Prefs::open(APP_ID).set("hotkeys", &on).ok();
             });
         })
-        .child(text("Keyboard shortcuts").font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
+        .child(col().grow(1.0).gap(1.0)
+            .child(text("Keyboard shortcuts").font(TextStyle::new(13.5, 450.0)).color(t.text))
+            .children(s.hotkeys.then(|| text("⌥⌘I show icons  ·  ⌥⌘F search").font(TextStyle::new(10.5, 450.0)).color(t.text_secondary))))
         .child(switch(s.hotkeys, dark))
 }
 

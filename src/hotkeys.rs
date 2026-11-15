@@ -1,7 +1,7 @@
 //! Global keyboard shortcuts, through the system's hot key calls (Carbon). They need no extra
 //! permission and cost nothing while no key is pressed.
-//!   Control + Option + Space: show or hide the hidden icons.
-//!   Control + Option + F: search.
+//!   Option + Command + I (I for Ice): show or hide the hidden icons.
+//!   Option + Command + F: search.
 use std::cell::RefCell;
 use std::ffi::c_void;
 
@@ -9,8 +9,8 @@ use rune::AppHandle;
 
 use crate::{status_item, Mode, State};
 
-const CONTROL_OPTION: u32 = 0x1000 | 0x0800;
-const KEY_SPACE: u32 = 49;
+const COMMAND_OPTION: u32 = 0x0100 | 0x0800;
+const KEY_I: u32 = 34;
 const KEY_F: u32 = 3;
 const STRIP_ID: u32 = 1;
 const SEARCH_ID: u32 = 2;
@@ -79,10 +79,10 @@ pub fn set_enabled(on: bool) {
             unsafe { UnregisterEventHotKey(key) };
         }
         if on {
-            for (code, id) in [(KEY_SPACE, STRIP_ID), (KEY_F, SEARCH_ID)] {
+            for (code, id) in [(KEY_I, STRIP_ID), (KEY_F, SEARCH_ID)] {
                 let mut key = std::ptr::null_mut();
                 // 'ICEO' is our signature; it only has to be the same every time.
-                let status = unsafe { RegisterEventHotKey(code, CONTROL_OPTION, HotKeyId { signature: 0x4943454F, id }, GetApplicationEventTarget(), 0, &mut key) };
+                let status = unsafe { RegisterEventHotKey(code, COMMAND_OPTION, HotKeyId { signature: 0x4943454F, id }, GetApplicationEventTarget(), 0, &mut key) };
                 if status == 0 {
                     keys.push(key);
                 }

@@ -117,8 +117,8 @@ Right-click the Iceout icon, then Search. You type, and the icons whose names co
 
 ## Keyboard shortcuts
 
-Control + Option + Space shows or hides the strip. Control + Option + F opens search. One switch in Settings turns both on or off. It is on by default and saved in `prefs.json`.
-- **The keys are shown in the right-click menu, not in Settings.** A first version listed the keys under the switch with key caps. It looked crowded. Settings now has only the switch, and the menu items "Show Icons" and "Search…" show their keys the normal Mac way. Rejected: key rows in Settings (clutter).
+Option + Command + I (I for Ice) shows or hides the strip. Option + Command + F opens search. Control + Option was the first choice, but other apps use it too; Option + Command + letter is rare. We did not use plain Command + F or Command + Space: they would steal find and Spotlight in every app. One switch in Settings turns both on or off. It is on by default and saved in `prefs.json`.
+- **The keys are shown as one tiny line.** A first version listed the keys under the switch with key caps. It looked crowded. Now there is one small grey line under the switch label, only while the switch is on, and the row keeps its height so nothing moves. The right-click menu also shows the keys beside "Show Icons" and "Search…". Rejected: key rows with key caps (clutter).
 
 - **System hot key calls (Carbon `RegisterEventHotKey`), not an event monitor.** They need no permission and cost nothing until a key is pressed. This is also what Ice does.
 - **Fixed keys, one switch.** A key recorder needs a lot of code (key names, modifiers, clashes), and a first version does not need it. The trade-off: you cannot pick your own keys yet. If another app owns one of these keys, the register call just fails and that key stays off.
