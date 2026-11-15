@@ -264,7 +264,7 @@ fn open_item(s: &mut State, tx: &mut Tx, item: &Item) {
 
 /// The search window is as tall as its results (at least one row, for the "no match" line).
 fn search_height(results: usize) -> f32 {
-    2.0 * SEARCH_PAD + SEARCH_BOX + SEARCH_GAP + results.clamp(1, SEARCH_ROWS) as f32 * ROW
+    2.0 * SEARCH_PAD + SEARCH_BOX + 0.5 + SEARCH_GAP + results.clamp(1, SEARCH_ROWS) as f32 * ROW
 }
 
 fn window_height(s: &State) -> f32 {
@@ -521,8 +521,8 @@ fn search_view(s: &State, dark: bool) -> El {
         .autofocus()
         .label("Search menu bar icons")
         .grow(1.0);
-    // The box: a soft field.
-    let input = row().w_full().h(SEARCH_BOX).px(14.0).center_y().radius(12.0).fill(card_fill(dark)).child(field);
+    // The box has no fill and no corners: just text on the glass, with a thin line under it.
+    let input = row().w_full().h(SEARCH_BOX).px(6.0).center_y().child(field);
     let rows = found.into_iter().enumerate().map(|(i, item)| {
         let name = item.name.clone();
         let icon = picture(&item, 22.0, dark);
@@ -534,7 +534,7 @@ fn search_view(s: &State, dark: bool) -> El {
     let none = s.items.iter().all(|item| !matches(&item.name, &s.query.text)).then(|| {
         row().w_full().h(ROW).center_y().px(6.0).child(text("No matching icons").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
     });
-    glass(WINDOW_RADIUS).padding(SEARCH_PAD).child(input).child(el().h(SEARCH_GAP)).children(rows).children(none)
+    glass(WINDOW_RADIUS).padding(SEARCH_PAD).child(input).child(hairline(dark)).child(el().h(SEARCH_GAP)).children(rows).children(none)
 }
 
 fn settings_view(s: &State, dark: bool) -> El {
