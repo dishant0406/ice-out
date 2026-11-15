@@ -203,6 +203,13 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
     handle.show();
 }
 
+/// `open` for a shortcut: the window opens under the mouse, on the display it is on.
+pub fn open_at_mouse(handle: &AppHandle<State>, mode: Mode) {
+    let mouse = unsafe { NSEvent::mouseLocation() };
+    LAST_CLICK.set((mouse.x, mouse.y));
+    open(handle, mode);
+}
+
 /// `open` for use from any thread.
 pub fn open_anywhere(handle: AppHandle<State>, mode: Mode) {
     on_main(move || open(&handle, mode));

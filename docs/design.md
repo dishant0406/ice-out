@@ -106,3 +106,19 @@ What was already fast and was left alone: opening a window (33 ms), scrolling (t
 ## No system window shadow
 
 The system shadow of a transparent window is drawn from an old picture of the window, so after the window resized (opening Appearance) a square border appeared around the glass. The shadow is off. The glass has its own edge.
+
+## Search
+
+Right-click the Iceout icon, then Search. You type, and the icons whose names contain your letters in order are listed ("mt" finds "Moneta"). Enter opens the top one. A click opens any of them.
+
+- **Plain letter match, not fuzzy scoring.** Ice uses a fuzzy search library. Here the list is about 40 names at most, so "letters in order" is enough, and it needs no new dependency.
+- **It searches all icons, hidden or not.** A hidden icon is brought out and put back, the same way the strip does it (`open_item` calls the same `press_hidden`). A visible icon is just pressed.
+- **Fixed window height.** Six rows tall, always. The window does not jump while you type, and we never have to resize it on each key.
+
+## Keyboard shortcuts
+
+Control + Option + Space shows or hides the strip. Control + Option + F opens search. One switch in Settings turns both on or off. It is on by default and saved in `prefs.json`.
+
+- **System hot key calls (Carbon `RegisterEventHotKey`), not an event monitor.** They need no permission and cost nothing until a key is pressed. This is also what Ice does.
+- **Fixed keys, one switch.** A key recorder needs a lot of code (key names, modifiers, clashes), and a first version does not need it. The trade-off: you cannot pick your own keys yet. If another app owns one of these keys, the register call just fails and that key stays off.
+- **The window opens under the mouse.** There is no button click to place it under, so a shortcut uses where the mouse is, on the display it is on.

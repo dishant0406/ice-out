@@ -30,6 +30,8 @@ So Ice Out asks for the smallest permission it can, and it is built to be light.
 - **Only the icon you click shows.** The others stay hidden. When you finish with its menu, it goes back.
 - **New apps show up in the list.** Install an app, and within about two seconds its icon is in Settings (hidden at first, like in Ice).
 - **Tune the look.** Sliders for icon size, padding, spacing and corner radius, with a live preview.
+- **Search.** Right-click the icon, then Search. Type a few letters and open any icon.
+- **Keyboard shortcuts.** Control + Option + Space shows the hidden icons. Control + Option + F searches. One switch in Settings.
 - **Open at login.** One switch.
 - **First-launch setup.** It walks you through allowing Accessibility.
 - **Quit puts everything back.** If you quit Ice Out, your bar is the way it was.
@@ -69,6 +71,7 @@ Because of this, hiding, showing and "peeking" an icon move **only that icon**. 
 | `src/main.rs` | State, the windows (strip, Settings, welcome), reading and merging the bar |
 | `src/items.rs` | Accessibility reads, the icon window list, moving icons |
 | `src/status_item.rs` | The two menu bar buttons, right-click menu, window placement, peeking |
+| `src/hotkeys.rs` | Keyboard shortcuts |
 | `src/login.rs` | Start at login |
 | `assets/` | App icon, menu bar mark, installer picture |
 | `scripts/` | Builds the app, the icon and the installer |
@@ -89,7 +92,8 @@ I did not run Ice or Bartender side by side with a profiler, so I do **not** hav
 | Purple screen-recording dot | Never | When capture is on | When capture is on |
 | Hides icons | Yes | Yes | Yes |
 | Shows only the clicked icon | Yes | Yes (temp show) | Yes |
-| Search, hotkeys, triggers, presets | Not yet | Some | Yes |
+| Search and hotkeys | Yes (fixed keys) | Yes | Yes |
+| Triggers, presets | Not yet | No | Yes |
 | Menu bar styling (tint, border, shape) | No | Yes | Yes |
 | Notch handling | Basic (moves unseen icons to the hidden side) | Yes (Ice Bar) | Yes |
 
@@ -131,6 +135,7 @@ I tested these live on a real menu bar, with screenshots:
 
 Built, but **not tested live yet** (please try them and tell me):
 
+- Search with a real click, and the two keyboard shortcuts (the keys register, but I did not press them, because key presses stop my own session).
 - The window opening under the right display on a **second monitor**.
 - An app that restarts getting its icon put back where you had it.
 - Icons that macOS cannot fit under the **notch** being moved to the hidden side.
@@ -139,7 +144,7 @@ Built, but **not tested live yet** (please try them and tell me):
 
 ## Still in development
 
-- Search for menu bar items, and hotkeys.
+- Choose your own hotkeys.
 - Rules: show certain icons by Wi-Fi, battery or time.
 - Always-hidden section.
 - Real menu bar glyphs as an optional extra (this needs Screen Recording, so it would be opt-in).

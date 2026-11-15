@@ -54,6 +54,21 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 - **An app restarts:** macOS remembers each icon's place, so most apps come back where they were. If an icon you had in view comes back hidden with a new process id, it is moved back into view. An icon you hid yourself stays hidden.
 - **No room (notch):** icons right of the divider that sit left of the notch's right edge cannot be seen, so they are moved to the hidden side, and you can open them from the strip. Nothing happens on a Mac without a notch.
 
+## Search
+
+1. Right-click the icon, choose Search. `search:` in `src/status_item.rs` calls `open(Mode::Search)`. The box starts empty and has focus.
+2. Each key changes `State.query`. `search_results` in `src/main.rs` keeps the icons that match (`matches`). Six rows show at most.
+3. Enter (`on_submit`) or a click calls `open_item`: the window closes, then a hidden icon is revealed with `press_hidden`, or a visible one is pressed.
+4. Nothing matches: the list is empty. Enter does nothing. Click away or Done closes it as always.
+5. Busy (another icon is moving): `open_item` does nothing, so a second request cannot collide.
+
+## Keyboard shortcuts
+
+1. At start, `hotkeys::install` hooks the system event, and `hotkeys::set_enabled` registers the two keys if the saved switch is on.
+2. A key press calls `pressed` in `src/hotkeys.rs` on the main thread. Space hides the window if it is open, else opens the strip. F opens search. Both open under the mouse (`open_at_mouse`).
+3. The Settings switch calls `set_enabled` again and saves `hotkeys` on another thread.
+4. Another app owns the key: its register call fails and that key does nothing. The switch still shows on.
+
 ## Closing
 
 Done, a click on the Iceout icon, or a click anywhere else (global mouse monitor) hides the window.

@@ -5,6 +5,7 @@
 //! `cargo run -- --snap out/demo.png --scene settings --size 300x260` renders a window without a display.
 
 mod items;
+mod hotkeys;
 mod login;
 mod status_item;
 
@@ -203,6 +204,8 @@ pub struct State {
     pub setup_done: bool,
     /// Whether the program starts at login.
     pub login: bool,
+    /// Whether the keyboard shortcuts are on.
+    pub hotkeys: bool,
 }
 
 fn hidden(s: &State) -> impl Iterator<Item = &Item> {
@@ -227,7 +230,7 @@ pub fn window_width(mode: Mode) -> f32 {
 fn settings_height(icons: usize, advanced: bool) -> f32 {
     let rows = (icons.max(1) as f32).min(if advanced { 4.0 } else { 8.0 });
     let appearance = if advanced { PREVIEW_HEIGHT + 4.0 * SLIDER_BLOCK + 8.0 } else { 0.0 };
-    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 2.0 * ROW + appearance;
+    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 3.0 * ROW + appearance;
     (2.0 * PAD + HEADER + SECTION_GAP + body).min(760.0)
 }
 
@@ -547,7 +550,7 @@ fn settings_view(s: &State, dark: bool) -> El {
     glass(WINDOW_RADIUS).padding(PAD).gap(SECTION_GAP)
         .child(header)
         .child(icons_section)
-        .child(col().w_full().child(hairline(dark)).child(login_row(s, dark)).child(hairline(dark)).child(advanced_section(s, dark)))
+        .child(col().w_full().child(hairline(dark)).child(login_row(s, dark)).child(hairline(dark)).child(hotkeys_row(s, dark)).child(hairline(dark)).child(advanced_section(s, dark)))
 }
 
 /// One row with a switch: whether the program starts when you log in.
@@ -564,6 +567,25 @@ fn login_row(s: &State, dark: bool) -> El {
         })
         .child(text("Open at login").font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
         .child(switch(s.login, dark))
+}
+
+/// One row with a switch: the keyboard shortcuts (Control + Option + Space, and + F for search).
+fn hotkeys_row(s: &State, dark: bool) -> El {
+    let t = tok::theme(dark);
+    row().key("hotkeys").role("switch").label("Keyboard shortcuts").checked(s.hotkeys).hit()
+        .w_full().h(ROW).center_y()
+        .on_press_tx(|s: &mut State, _| {
+            s.hotkeys = !s.hotkeys;
+            hotkeys::set_enabled(s.hotkeys);
+            let on = s.hotkeys;
+            std::thread::spawn(move || {
+                Prefs::open(APP_ID).set("hotkeys", &on).ok();
+            });
+        })
+        .child(col().grow(1.0)
+            .child(text("Keyboard shortcuts").font(TextStyle::new(13.5, 450.0)).color(t.text))
+            .child(text("⌃⌥Space shows icons, ⌃⌥F searches").font(TextStyle::new(11.0, 450.0)).color(t.text_secondary)))
+        .child(switch(s.hotkeys, dark))
 }
 
 /// The first-launch setup: the mark, a short welcome, two plain rows, and one button.
@@ -709,7 +731,8 @@ fn init() -> State {
     let look = load_look();
     *LOOK.lock().unwrap_or_else(|e| e.into_inner()) = look;
     let setup_done = Prefs::open(APP_ID).get::<bool>("setup_done").unwrap_or(false);
-    State { look, setup_done, login: login::enabled(), ..State::default() }
+    let hotkeys = Prefs::open(APP_ID).get::<bool>("hotkeys").unwrap_or(true);
+    State { look, setup_done, login: login::enabled(), hotkeys, ..State::default() }
 }
 
 fn setup(s: &mut State, waker: Waker) {
@@ -767,7 +790,11 @@ fn main() {
         move |s, _| s.handle = Some(handle)
     });
     // Updates run on the main thread inside the event loop, which is where AppKit calls belong.
-    app.handle().update(move |_, _| status_item::add(handle));
+    app.handle().update(move |s, _| {
+        status_item::add(handle.clone());
+        hotkeys::install(handle);
+        hotkeys::set_enabled(s.hotkeys);
+    });
     // A second after launch the buttons have their place in the bar, so the first read waits for
     // that (the main thread must keep running meanwhile, so this waits on its own thread). Then
     // keep watching for icons that come and go.
