@@ -508,6 +508,13 @@ fn search_view(s: &State, dark: bool) -> El {
             }
         })
         .key("search-box")
+        .on_key(|_: &mut State, key: &rune::KeyEvent, tx| {
+            let escape = key.key == rune::Key::Escape;
+            if escape {
+                tx.close_window();
+            }
+            escape
+        })
         .single_line()
         .placeholder("Search icons", t.text_secondary)
         .on_input_change(|s: &mut State, tx| fit(s, tx))
