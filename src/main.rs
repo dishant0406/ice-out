@@ -37,9 +37,6 @@ const WELCOME_HEIGHT: f32 = 404.0;
 const SECTION_LABEL: f32 = 26.0;
 const SECTION_GAP: f32 = 14.0;
 const PREVIEW_HEIGHT: f32 = 96.0;
-const SHORTCUT_ROW: f32 = 34.0;
-/// The shortcuts switch and the two key rows under it, plus some air below.
-const HOTKEYS_BLOCK: f32 = ROW + 2.0 * SHORTCUT_ROW + 8.0;
 const SEARCH_BOX: f32 = 40.0;
 /// The search window keeps one size, so it does not jump while you type.
 const SEARCH_HEIGHT: f32 = 2.0 * PAD + SEARCH_BOX + SEARCH_ROWS as f32 * ROW;
@@ -233,7 +230,7 @@ pub fn window_width(mode: Mode) -> f32 {
 fn settings_height(icons: usize, advanced: bool) -> f32 {
     let rows = (icons.max(1) as f32).min(if advanced { 4.0 } else { 8.0 });
     let appearance = if advanced { PREVIEW_HEIGHT + 4.0 * SLIDER_BLOCK + 8.0 } else { 0.0 };
-    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 2.0 * ROW + HOTKEYS_BLOCK + appearance;
+    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 3.0 * ROW + appearance;
     (2.0 * PAD + HEADER + SECTION_GAP + body).min(760.0)
 }
 
@@ -572,10 +569,10 @@ fn login_row(s: &State, dark: bool) -> El {
         .child(switch(s.login, dark))
 }
 
-/// The keyboard shortcuts: one switch, then what each shortcut does and its keys.
+/// One row with a switch: the keyboard shortcuts. Their keys are shown in the right-click menu.
 fn hotkeys_row(s: &State, dark: bool) -> El {
     let t = tok::theme(dark);
-    let switch_row = row().key("hotkeys").role("switch").label("Keyboard shortcuts").checked(s.hotkeys).hit()
+    row().key("hotkeys").role("switch").label("Keyboard shortcuts").checked(s.hotkeys).hit()
         .w_full().h(ROW).center_y()
         .on_press_tx(|s: &mut State, _| {
             s.hotkeys = !s.hotkeys;
@@ -586,26 +583,7 @@ fn hotkeys_row(s: &State, dark: bool) -> El {
             });
         })
         .child(text("Keyboard shortcuts").font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
-        .child(switch(s.hotkeys, dark));
-    let shortcut = |what: &str, keys: [&str; 3]| {
-        let caps = keys.into_iter().map(|k| keycap(k, dark));
-        row().w_full().h(SHORTCUT_ROW).center_y().gap(6.0).pl(12.0)
-            .child(text(what).font(TextStyle::new(13.0, 450.0)).color(t.text).grow(1.0))
-            .children(caps)
-    };
-    // The key rows fade when the shortcuts are off.
-    col().w_full()
-        .child(switch_row)
-        .child(col().w_full().opacity(if s.hotkeys { 1.0 } else { 0.4 })
-            .child(shortcut("Show icons", ["Ctrl", "Option", "Space"]))
-            .child(shortcut("Search", ["Ctrl", "Option", "F"])))
-}
-
-/// One key drawn as a small key cap.
-fn keycap(label: &str, dark: bool) -> El {
-    let t = tok::theme(dark);
-    row().h(24.0).px(8.0).center().radius(6.0).fill(card_fill(dark))
-        .child(text(label).font(TextStyle::new(12.0, 600.0)).color(t.text))
+        .child(switch(s.hotkeys, dark))
 }
 
 /// The first-launch setup: the mark, a short welcome, two plain rows, and one button.

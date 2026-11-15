@@ -64,6 +64,7 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 
 ## Keyboard shortcuts
 
+0. To learn the keys, right-click the icon: "Show Icons" and "Search…" show them.
 1. At start, `hotkeys::install` hooks the system event, and `hotkeys::set_enabled` registers the two keys if the saved switch is on.
 2. A key press calls `pressed` in `src/hotkeys.rs` on the main thread. Space hides the window if it is open, else opens the strip. F opens search. Both open under the mouse (`open_at_mouse`).
 3. The Settings switch calls `set_enabled` again and saves `hotkeys` on another thread.
