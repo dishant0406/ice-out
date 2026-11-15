@@ -113,7 +113,7 @@ Right-click the Iceout icon, then Search. You type, and the icons whose names co
 
 - **Plain letter match, not fuzzy scoring.** Ice uses a fuzzy search library. Here the list is about 40 names at most, so "letters in order" is enough, and it needs no new dependency.
 - **It searches all icons, hidden or not.** A hidden icon is brought out and put back, the same way the strip does it (`open_item` calls the same `press_hidden`). A visible icon is just pressed.
-- **The window is as tall as its results.** A soft box with a hint ("Search icons") on top, then at most six rows. It shrinks as you type, down to one "No matching icons" line, so there is never a big empty pane. A first version had a fixed height with empty space and a box you could not see. It opens in the middle of the display, like a launcher.
+- **The window is as tall as its results.** A soft box with a hint ("Search icons") on top, then at most six rows. It shrinks as you type, down to one "No matching icons" line, so there is never a big empty pane. A first version had a fixed height with empty space and a box you could not see. It opens under the Iceout icon, like the strip.
 - **It takes the keyboard.** A hot key does not make Ice Out the front app, so search activates the app and asks Rune to focus the box, so you can type at once.
 
 ## Keyboard shortcuts
@@ -125,4 +125,4 @@ Hold I (for Ice) with Option and Command, then press Space to show or hide the s
 - **Permission:** an event tap that can change events needs Accessibility, which Ice Out already has. No new permission. Without Accessibility the tap cannot be made, so `apply` tries again on each read once it is allowed.
 - **Cost:** the tap runs a small function for every key press on the whole system, on the main thread. It only compares numbers and returns. The system turns a tap off if it is ever slow, so the callback turns it back on.
 - **Trade-off:** you cannot pick your own keys yet.
-- **The strip opens under the Iceout icon.** A shortcut has no click, so it uses the middle of our own button instead of the mouse, and the strip lands where a click would put it. Search opens in the middle of the display.
+- **Shortcuts open under the Iceout icon.** A shortcut has no click, so it uses the middle of our own button instead of the mouse, and the strip and search land where a click would put them.
