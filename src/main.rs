@@ -356,6 +356,11 @@ pub fn fit(s: &State, tx: &mut Tx) {
     tx.resize_window((window_width(s.mode), window_height(s)));
 }
 
+/// `fit` without the animation, for switching between two screens: the content would stretch while the window grows.
+fn fit_instant(s: &State, tx: &mut Tx) {
+    tx.resize_window_instant((window_width(s.mode), window_height(s)));
+}
+
 /// Reads the menu bar on a background thread, then updates the state. The main thread never
 /// waits for the read, so the window stays responsive.
 pub fn reload(handle: AppHandle<State>) {
@@ -611,7 +616,7 @@ fn presets_view(s: &State, dark: bool) -> El {
         .child(row().key("presets-back").role("button").label("Back").hit().h(HEADER).center_y()
             .on_press_tx(|s: &mut State, tx| {
                 s.mode = Mode::Settings;
-                fit(s, tx);
+                fit_instant(s, tx);
             })
             .child(text("Back").font(TextStyle::new(13.5, 450.0)).color(tok::accent(0, dark))));
     let rows = s.presets.iter().take(SEARCH_ROWS).enumerate().map(|(i, preset)| {
@@ -650,7 +655,7 @@ fn presets_row(s: &State, dark: bool) -> El {
     row().key("presets").role("button").label("Presets").hit().w_full().h(ROW).center_y()
         .on_press_tx(|s: &mut State, tx| {
             s.mode = Mode::Presets;
-            fit(s, tx);
+            fit_instant(s, tx);
         })
         .child(text("Presets").font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
         .child(text(format!("{}  ›", s.presets.len())).font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
