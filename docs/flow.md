@@ -63,4 +63,3 @@ Done, a click on the Iceout icon, or a click anywhere else (global mouse monitor
 - `src/main.rs`: state, the two views, reading and merging the menu bar (`reload`, `apply`).
 - `src/items.rs`: Accessibility reads, pressing an item, the synthetic drag.
 - `src/status_item.rs`: the two buttons, the right-click menu, window placement, hide and reveal jobs.
-- `tools/axprobe`: a small app that prints every menu bar item. It is only for checking.

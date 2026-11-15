@@ -101,3 +101,77 @@ Search, hotkeys, auto rehide, groups, triggers, styling, launch at login, notch 
 | Binary size | 16.8 MB (was 26 MB before LTO and strip) |
 
 Debug builds are far slower (window takes about 25 s). Only judge speed from `cargo build --release`.
+
+# Plan: search, hotkeys, presets, triggers
+
+## What the research found
+
+| Feature | Ice | Bartender |
+| --- | --- | --- |
+| Search | Built. A floating panel (`MenuBarSearchPanel.swift`), fuzzy matching on names, shows sections. Pick a row and Ice does "temp show, click, put back". Closes on Escape, a click outside, or a Space change. Screen Recording only adds the pictures. | Built (Quick Search). Finds, shows and opens any item from the keyboard. Its pages do not say how it opens or what Enter does. |
+| Hotkeys | Built, and no extra permission. It uses Carbon `RegisterEventHotKey`. Six actions: toggle hidden section, toggle always-hidden section, search, Ice Bar on or off, show dividers, toggle app menus. A recorder refuses combinations macOS reserves. Saved as JSON in UserDefaults. | Built. A hotkey on any single item shows and opens it. AppleScript can do the same. |
+| Triggers | **Not built.** Only a roadmap line. | Built. Battery (state or level), Wi-Fi (connected, or a named network), location, time and date. Conditions combine. A match applies a preset or shows items. |
+| Presets | **Not built.** Ice has no named saved layouts (its roadmap calls them profiles). | Built. Unlimited. Applied by hand, by a trigger, or by a macOS Focus mode. |
+
+So Bartender is the only reference for triggers and presets, and its pages are thin. Ice is the reference for search and hotkeys, with real code to learn from (we copy the ideas, not the code, because Ice is GPL-3.0).
+
+## Order of work
+
+Each step ships on its own, and each is checked before the next starts.
+
+### 1. Search (small)
+
+- **What:** a hotkey or a menu item opens a small glass panel with a text box and a list of every non-system icon (hidden and visible). Type to filter. Up and Down move. Enter opens the icon. Escape or a click away closes it.
+- **How:** one more mode in the same window (`Mode::Search`), so no new window and no new memory. Matching is a simple "letters in order" match on the app name, ranked by earlier match. No new crate. Enter reuses `press_hidden` for a hidden icon, and `press` for a visible one.
+- **Permission:** none new. The panel needs keyboard focus, so the app activates itself while the panel is open.
+- **Edge cases:** empty list, no match, app quit while the panel is open, two icons with the same name (show the app path's last part), keyboard focus lost to another app (close).
+- **Done when:** the panel opens in under 50 ms, 30 open and close cycles keep memory flat, and a headless test types "mo" and finds "Moneta".
+
+### 2. Hotkeys (medium)
+
+- **What:** global shortcuts you record in Settings. Actions to start with: open the strip, open search, and "open this icon" (one per icon you choose).
+- **How:** Carbon `RegisterEventHotKey`, as Ice does. It needs no permission and costs nothing while idle. Check combinations against the ones macOS reserves (`CopySymbolicHotKeys`). A small recorder row in Settings. Save in `prefs.json`.
+- **Permission:** none.
+- **Edge cases:** two actions on one key, a key another app already took (registration fails: say so in the row), the app not running at login, keyboard layouts.
+- **Done when:** a recorded key works from any app, a clash shows a message, and idle CPU stays 0%.
+
+### 3. Presets (medium)
+
+- **What:** a named layout is the set of icons that are hidden. Settings gets a small "Layouts" row: save the current layout, switch layout, delete. Switching moves only the icons that differ.
+- **How:** store `name -> list of icon keys` in `prefs.json`. Applying one is a diff, then the same `move_item` calls we already use, one at a time. An icon that is not running is skipped and remembered.
+- **Permission:** none.
+- **Edge cases:** an icon in the layout is gone, a new icon not in the layout (leave it hidden, like any new icon), applying while an icon is out for a peek (wait), the first layout being "what it is now".
+- **Done when:** switching between two layouts of 8 icons takes under a second with no flash, and nothing else on the bar moves.
+
+### 4. Triggers (largest)
+
+- **What:** a rule says "when X, apply layout Y". Start with the ones that need no permission.
+- **Phase A, no permission:**
+  - Time of day and days of the week. One timer set for the next boundary, so nothing wakes up while idle.
+  - Power: on battery or charging, and a battery level. Event driven (IOKit power source notifications), so no polling.
+  - An app is running or in front (we already read running apps).
+- **Phase B, optional, asks first:**
+  - Wi-Fi network name. On current macOS this needs the Location permission. It must be opt-in and say clearly why, because the whole point of Ice Out is as few permissions as possible.
+  - macOS Focus mode. Needs its own permission too. Opt-in.
+  - Place (GPS) is **not planned**. It needs Location, and the gain is small.
+- **How:** a rule is `{conditions, layout}`. Conditions are all "and" at first (Bartender does not say which it uses). When the rule set changes, evaluate once and apply the winner. If two rules match, the one lower in the list wins, and the list is orderable.
+- **Edge cases:** rules fighting each other (apply only on a change, never in a loop), the Mac waking from sleep (re-evaluate), a layout that does not exist any more, the user changing the layout by hand (their change stays until the next trigger fires).
+- **Done when:** a time rule and a battery rule switch the layout on their own, idle CPU is still 0%, and no permission prompt appears unless the user adds a Wi-Fi or Focus rule.
+
+## Cross-cutting rules
+
+- No new permission without a clear opt-in and one sentence on why.
+- No polling loop. Use events or one timer for the next change.
+- Speed budget: window opens under 50 ms, idle CPU 0%, idle memory under 40 MB.
+- Each feature gets: a headless unit test, a live test with a screenshot, a line in `docs/flow.md` (steps and edge cases), a `docs/design.md` entry (choice, reason, rejected options), and a README row.
+- Do not send key presses in live tests (they stop the session). For search and hotkeys, test with the unit tests and with mouse-driven paths.
+
+## Rough size
+
+| Step | Size | New code | New permission |
+| --- | --- | --- | --- |
+| Search | small | one mode, one match function, one hotkey hook | none |
+| Hotkeys | medium | Carbon registration, recorder row, storage | none |
+| Presets | medium | storage, diff and apply, a small Settings row | none |
+| Triggers A | large | rule storage, timer, power events, rule editor | none |
+| Triggers B | medium | Wi-Fi and Focus readers, opt-in screens | Location, Focus (opt-in) |
