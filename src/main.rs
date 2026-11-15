@@ -584,7 +584,7 @@ fn hotkeys_row(s: &State, dark: bool) -> El {
         })
         .child(col().grow(1.0).gap(1.0)
             .child(text("Keyboard shortcuts").font(TextStyle::new(13.5, 450.0)).color(t.text))
-            .children(s.hotkeys.then(|| text("⌥⌘I show icons  ·  ⌥⌘F search").font(TextStyle::new(10.5, 450.0)).color(t.text_secondary))))
+            .children(s.hotkeys.then(|| text("⌃⌥⌘I show icons  ·  ⌃⌥⌘F search").font(TextStyle::new(9.0, 450.0)).color(t.text_secondary))))
         .child(switch(s.hotkeys, dark))
 }
 

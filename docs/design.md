@@ -117,7 +117,7 @@ Right-click the Iceout icon, then Search. You type, and the icons whose names co
 
 ## Keyboard shortcuts
 
-Option + Command + I (I for Ice) shows or hides the strip. Option + Command + F opens search. Control + Option was the first choice, but other apps use it too; Option + Command + letter is rare. We did not use plain Command + F or Command + Space: they would steal find and Spotlight in every app. One switch in Settings turns both on or off. It is on by default and saved in `prefs.json`.
+Control + Option + Command + I (I for Ice) shows or hides the strip. Control + Option + Command + F opens search. Three modifiers together are almost never taken by other apps (Option + Command + I, for one, opens the web inspector in browsers). A letter such as I cannot be held as an extra modifier with the system hot key call, so I is the letter key. We did not use plain Command + F or Command + Space: they would steal find and Spotlight in every app. One switch in Settings turns both on or off. It is on by default and saved in `prefs.json`.
 - **The keys are shown as one tiny line.** A first version listed the keys under the switch with key caps. It looked crowded. Now there is one small grey line under the switch label, only while the switch is on, and the row keeps its height so nothing moves. The right-click menu also shows the keys beside "Show Icons" and "Search…". Rejected: key rows with key caps (clutter).
 
 - **System hot key calls (Carbon `RegisterEventHotKey`), not an event monitor.** They need no permission and cost nothing until a key is pressed. This is also what Ice does.
