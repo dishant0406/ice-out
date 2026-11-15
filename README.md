@@ -31,7 +31,7 @@ So Ice Out asks for the smallest permission it can, and it is built to be light.
 - **New apps show up in the list.** Install an app, and within about two seconds its icon is in Settings (hidden at first, like in Ice).
 - **Tune the look.** Sliders for icon size, padding, spacing and corner radius, with a live preview.
 - **Search.** Right-click the icon, then Search. Type a few letters and open any icon.
-- **Keyboard shortcuts.** Control + Option + Command + I (I for Ice) shows the hidden icons. Control + Option + Command + F searches. One switch in Settings, with the keys in a small line under it.
+- **Keyboard shortcuts.** Hold I (for Ice) + Option + Command, then press Space to show the hidden icons or F to search. One switch in Settings, with the keys in a small line under it.
 - **Open at login.** One switch.
 - **First-launch setup.** It walks you through allowing Accessibility.
 - **Quit puts everything back.** If you quit Ice Out, your bar is the way it was.
@@ -135,7 +135,7 @@ I tested these live on a real menu bar, with screenshots:
 
 Built, but **not tested live yet** (please try them and tell me):
 
-- Search with a real click, and the two keyboard shortcuts (the keys register, but I did not press them, because key presses stop my own session).
+- Search with a real click, and the two keyboard shortcuts (the keyboard tap is created and active, but I did not press the keys, because key presses stop my own session).
 - The window opening under the right display on a **second monitor**.
 - An app that restarts getting its icon put back where you had it.
 - Icons that macOS cannot fit under the **notch** being moved to the hidden side.

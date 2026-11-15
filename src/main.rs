@@ -306,6 +306,9 @@ pub fn reload(handle: AppHandle<State>) {
 pub(crate) fn apply(s: &mut State, tx: &mut Tx, permission: bool, mut found: Vec<Item>) {
     trace(&format!("bar read applied ({} icons)", found.len()));
     s.permission = permission;
+    if permission && s.hotkeys {
+        hotkeys::set_enabled(true);
+    }
 
     // A slow app can miss one read. Keep an icon that vanished if its app is still running,
     // for up to two reads, so the list does not flicker.
@@ -584,7 +587,7 @@ fn hotkeys_row(s: &State, dark: bool) -> El {
         })
         .child(col().grow(1.0).gap(1.0)
             .child(text("Keyboard shortcuts").font(TextStyle::new(13.5, 450.0)).color(t.text))
-            .children(s.hotkeys.then(|| text("⌃⌥⌘I show icons  ·  ⌃⌥⌘F search").font(TextStyle::new(9.0, 450.0)).color(t.text_secondary))))
+            .children(s.hotkeys.then(|| text("I ⌥ ⌘ + Space  show icons   ·   I ⌥ ⌘ + F  search").font(TextStyle::new(9.0, 450.0)).color(t.text_secondary))))
         .child(switch(s.hotkeys, dark))
 }
 

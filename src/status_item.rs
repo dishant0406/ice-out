@@ -13,7 +13,7 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
 use objc2_app_kit::{
-    NSApplication, NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSMenu, NSMenuItem, NSScreen, NSStatusBar, NSStatusItem,
+    NSApplication, NSEvent, NSEventMask, NSEventType, NSMenu, NSMenuItem, NSScreen, NSStatusBar, NSStatusItem,
     NSVariableStatusItemLength,
 };
 use objc2_app_kit::NSImage;
@@ -138,27 +138,13 @@ impl Clicker {
     /// attach it, click, and take it off again so left clicks keep working.
     fn show_menu(&self, mtm: MainThreadMarker) {
         let menu = NSMenu::new(mtm);
-        // The two shortcuts are shown beside their items, as in any Mac menu (Control + Option + Command).
-        let shortcuts = NSEventModifierFlags::NSEventModifierFlagControl
-            .union(NSEventModifierFlags::NSEventModifierFlagOption)
-            .union(NSEventModifierFlags::NSEventModifierFlagCommand);
-        for (title, action, key) in [
-            ("Show Icons", sel!(show:), "i"),
-            ("Search…", sel!(search:), "f"),
-            ("Settings…", sel!(settings:), ""),
-            ("Quit", sel!(quit:), ""),
-        ] {
+        for (title, action) in [("Show Icons", sel!(show:)), ("Search…", sel!(search:)), ("Settings…", sel!(settings:)), ("Quit", sel!(quit:))] {
             let item = unsafe {
                 NSMenuItem::initWithTitle_action_keyEquivalent(
-                    mtm.alloc(), &NSString::from_str(title), Some(action), &NSString::from_str(key),
+                    mtm.alloc(), &NSString::from_str(title), Some(action), &NSString::from_str(""),
                 )
             };
-            unsafe {
-                item.setTarget(Some(self));
-                if !key.is_empty() {
-                    item.setKeyEquivalentModifierMask(shortcuts);
-                }
-            };
+            unsafe { item.setTarget(Some(self)) };
             menu.addItem(&item);
         }
         TOGGLE.with(|t| {

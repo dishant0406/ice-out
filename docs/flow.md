@@ -64,11 +64,13 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 
 ## Keyboard shortcuts
 
-0. To learn the keys: Settings shows them in a small line under the switch (only while it is on), and the right-click menu shows them beside "Show Icons" and "Search…".
-1. At start, `hotkeys::install` hooks the system event, and `hotkeys::set_enabled` registers the two keys if the saved switch is on.
-2. A key press calls `pressed` in `src/hotkeys.rs` on the main thread. I hides the window if it is open, else opens the strip. F opens search. Both open under the mouse (`open_at_mouse`).
-3. The Settings switch calls `set_enabled` again and saves `hotkeys` on another thread.
-4. Another app owns the key: its register call fails and that key does nothing. The switch still shows on.
+1. To learn the keys: Settings shows them in a small line under the switch (only while it is on).
+2. At start `hotkeys::install` remembers the app handle. When Accessibility is allowed, `apply` calls `hotkeys::set_enabled(true)`, which makes the event tap the first time.
+3. Every key press goes to `on_key` in `src/hotkeys.rs`. Pressing I with Option and Command held marks I as held and swallows it. While I is held, Space (strip) or F (search) with Option and Command runs the action under the mouse (`open_at_mouse`) and is swallowed. Releasing I clears the mark.
+4. Everything else is passed on untouched.
+5. The Settings switch calls `set_enabled` and saves `hotkeys` on another thread. Off means the tap is paused.
+6. No Accessibility: no tap, the keys do nothing, and the switch still shows on. Allowing Accessibility fixes it on the next read.
+7. The system turns the tap off if it is slow: `on_key` sees that and turns it back on.
 
 ## Closing
 

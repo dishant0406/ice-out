@@ -117,9 +117,11 @@ Right-click the Iceout icon, then Search. You type, and the icons whose names co
 
 ## Keyboard shortcuts
 
-Control + Option + Command + I (I for Ice) shows or hides the strip. Control + Option + Command + F opens search. Three modifiers together are almost never taken by other apps (Option + Command + I, for one, opens the web inspector in browsers). A letter such as I cannot be held as an extra modifier with the system hot key call, so I is the letter key. We did not use plain Command + F or Command + Space: they would steal find and Spotlight in every app. One switch in Settings turns both on or off. It is on by default and saved in `prefs.json`.
-- **The keys are shown as one tiny line.** A first version listed the keys under the switch with key caps. It looked crowded. Now there is one small grey line under the switch label, only while the switch is on, and the row keeps its height so nothing moves. The right-click menu also shows the keys beside "Show Icons" and "Search…". Rejected: key rows with key caps (clutter).
+Hold I (for Ice) with Option and Command, then press Space to show or hide the strip, or F to open search. One switch in Settings turns both on or off. It is on by default and saved in `prefs.json`. A tiny grey line under the switch shows the keys, only while it is on.
 
-- **System hot key calls (Carbon `RegisterEventHotKey`), not an event monitor.** They need no permission and cost nothing until a key is pressed. This is also what Ice does.
-- **Fixed keys, one switch.** A key recorder needs a lot of code (key names, modifiers, clashes), and a first version does not need it. The trade-off: you cannot pick your own keys yet. If another app owns one of these keys, the register call just fails and that key stays off.
+- **An event tap, not the system hot key call.** The system hot key call (Carbon `RegisterEventHotKey`) takes one normal key plus modifiers, so it cannot express "I and Space together". A first version used it with Control + Option + Command + I. The event tap sees every key press, so it can follow whether I is held.
+- **It swallows the keys.** While I, Option and Command are held, the tap returns nothing for I, Space and F, so the front app never sees them. No browser inspector, no Finder search, no typed letters. Without Option and Command, I, Space and F pass through untouched. The release of I is always swallowed, so a stuck key cannot happen.
+- **Permission:** an event tap that can change events needs Accessibility, which Ice Out already has. No new permission. Without Accessibility the tap cannot be made, so `apply` tries again on each read once it is allowed.
+- **Cost:** the tap runs a small function for every key press on the whole system, on the main thread. It only compares numbers and returns. The system turns a tap off if it is ever slow, so the callback turns it back on.
+- **Trade-off:** you cannot pick your own keys yet.
 - **The window opens under the mouse.** There is no button click to place it under, so a shortcut uses where the mouse is, on the display it is on.
