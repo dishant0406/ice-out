@@ -73,6 +73,16 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 6. No Accessibility: no tap, the keys do nothing, and the switch still shows on. Allowing Accessibility fixes it on the next read.
 7. The system turns the tap off if it is slow: `on_key` sees that and turns it back on.
 
+## Presets
+
+1. Settings, then the "Presets" row (`presets_row`), opens `Mode::Presets` in the same window and fits it (`presets_height`).
+2. Type a name in the box and press Return: `save_preset` stores the hidden icons under that name (`add_preset`), replacing a preset with the same name. An empty or blank name does nothing.
+3. Press a name (or pick it in the right-click menu): `apply_preset` works out the moves (`presets::moves`) and `status_item::move_items` does them one by one on a background thread, then reads the bar again. The window closes.
+4. Nothing differs: nothing moves. Busy (an icon is moving or out for a peek): the request is ignored.
+5. An icon in the preset is gone: it is not in the list, so there is nothing to move for it. A new icon: shown (not in the hidden list), so it is moved out of hiding if it was hidden.
+6. The x deletes a preset. The list is saved on another thread (`presets::save`) and the menu names are updated (`set_preset_names`).
+7. "Active" appears on a preset that matches the bar now.
+
 ## Closing
 
 Done, a click on the Iceout icon, or a click anywhere else (global mouse monitor) hides the window.

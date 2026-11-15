@@ -126,3 +126,14 @@ Hold I (for Ice) with Option and Command, then press Space to show or hide the s
 - **Cost:** the tap runs a small function for every key press on the whole system, on the main thread. It only compares numbers and returns. The system turns a tap off if it is ever slow, so the callback turns it back on.
 - **Trade-off:** you cannot pick your own keys yet.
 - **Shortcuts open under the Iceout icon.** A shortcut has no click, so it uses the middle of our own button instead of the mouse, and the strip and search land where a click would put them.
+
+## Presets
+
+A preset is a name and the list of icons that are hidden. Applying one moves only the icons that differ from now.
+
+- **What a preset stores.** Only the hidden icons (their keys, like `Moneta#0`), in `prefs.json`. An icon that is not in the list is shown. A new app's icon is therefore shown after you apply an old preset. We chose this because a missing icon is the easy case: nothing to move.
+- **Active is computed, not stored.** A preset shows "Active" when applying it would move nothing. There is no "current preset" to keep in step with the bar, so it can never be wrong after you move an icon by hand.
+- **Moves go through the same code as a Settings switch** (`move_items`, one icon at a time on one background thread), so nothing flashes and nothing else moves. One read of the bar follows at the end.
+- **Where it lives.** Settings has one quiet row, "Presets", with a count. It opens a small window: the names, a thin line, and a box to save the current layout. Press a name to apply it, press the x to delete. The right-click menu also lists the presets under a line, so switching takes two clicks. This is the pattern of Bartender and of small preset switchers (a list in the menu, editing in a window). A search for Dribbble shots returned nothing, so the look follows search: plain text on the glass, thin lines, no fills, no pills.
+- **Rejected:** a dropdown in Settings (more chrome, and Rune has none), a "current preset" saved in `prefs.json` (goes stale), and storing shown icons too (needs a rule for new icons).
+- **Tests do not touch your settings.** `save_look` and `presets::save` do nothing under `cargo test`. Before this, the slider test wrote tiny icon sizes into the real `prefs.json`.

@@ -6,6 +6,7 @@
 
 mod items;
 mod hotkeys;
+mod presets;
 mod login;
 mod status_item;
 
@@ -28,7 +29,7 @@ const HEADER: f32 = 36.0;
 const LOGO: f32 = 26.0;
 /// The corner radius of the Settings and welcome windows, in points.
 const WINDOW_RADIUS: f32 = 8.0;
-const APP_ID: &str = "dev.iceout";
+pub const APP_ID: &str = "dev.iceout";
 const WELCOME_WIDTH: f32 = 360.0;
 const SEARCH_WIDTH: f32 = 360.0;
 /// The most results the search window shows at once.
@@ -137,6 +138,10 @@ fn load_look() -> Look {
 
 /// Saves on another thread, so a click never waits for the disk.
 fn save_look(look: Look) {
+    // Tests drag the sliders; they must not write the real settings file.
+    if cfg!(test) {
+        return;
+    }
     std::thread::spawn(move || {
         let mut prefs = Prefs::open(APP_ID);
         prefs.set("icon", &look.icon).ok();
@@ -160,6 +165,7 @@ pub fn trace(label: &str) {
 /// `status_item` needs to size the window before it opens.
 pub static HIDDEN_COUNT: AtomicUsize = AtomicUsize::new(0);
 static ITEM_COUNT: AtomicUsize = AtomicUsize::new(0);
+static PRESET_COUNT: AtomicUsize = AtomicUsize::new(0);
 static ADVANCED_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -173,6 +179,8 @@ pub enum Mode {
     Welcome,
     /// A text box and the icons whose names match it.
     Search,
+    /// Saved layouts: pick one to apply it, or save the current one.
+    Presets,
 }
 
 #[derive(Default)]
@@ -192,6 +200,9 @@ pub struct State {
     pub peeking: Option<String>,
     /// What is typed in the search box.
     pub query: rune::TextEdit,
+    /// Saved layouts, and the name being typed for a new one.
+    pub presets: Vec<presets::Preset>,
+    pub preset_name: rune::TextEdit,
     /// The Iceout mark, shown at the top of Settings and the welcome window.
     pub logo: Option<rune::Image>,
     /// Keys of icons the user has had in view, so an app that restarts (its new icon always starts
@@ -219,7 +230,7 @@ pub fn window_width(mode: Mode) -> f32 {
     let look = look();
     match mode {
         Mode::Welcome => WELCOME_WIDTH,
-        Mode::Search => SEARCH_WIDTH,
+        Mode::Search | Mode::Presets => SEARCH_WIDTH,
         Mode::Settings => SETTINGS_WIDTH,
         Mode::Strip if n == 0 => 320.0,
         Mode::Strip => 2.0 * look.padding + n as f32 * look.cell() + (n as f32 - 1.0) * look.spacing,
@@ -231,7 +242,7 @@ pub fn window_width(mode: Mode) -> f32 {
 fn settings_height(icons: usize, advanced: bool) -> f32 {
     let rows = (icons.max(1) as f32).min(if advanced { 4.0 } else { 8.0 });
     let appearance = if advanced { PREVIEW_HEIGHT + 4.0 * SLIDER_BLOCK + 8.0 } else { 0.0 };
-    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 3.0 * ROW + appearance;
+    let body = SECTION_LABEL + rows * ROW + SECTION_GAP + 4.0 * ROW + appearance;
     (2.0 * PAD + HEADER + SECTION_GAP + body).min(760.0)
 }
 
@@ -267,10 +278,62 @@ fn search_height(results: usize) -> f32 {
     2.0 * SEARCH_PAD + SEARCH_BOX + 0.5 + SEARCH_GAP + results.clamp(1, SEARCH_ROWS) as f32 * ROW
 }
 
+/// The presets window: a title, the presets (at least one row, for the empty line), a thin line
+/// and the box for a new name.
+fn presets_height(count: usize) -> f32 {
+    2.0 * SEARCH_PAD + HEADER + count.clamp(1, SEARCH_ROWS) as f32 * ROW + 0.5 + SEARCH_GAP + SEARCH_BOX
+}
+
+/// Saves the icons that are hidden now under the typed name, replacing a preset of that name.
+fn save_preset(s: &mut State, tx: &mut Tx) {
+    if add_preset(s) {
+        presets_changed(s, tx);
+    }
+}
+
+/// The state change of `save_preset`: false when the name is empty.
+fn add_preset(s: &mut State) -> bool {
+    let name = s.preset_name.text.trim().to_string();
+    if name.is_empty() {
+        return false;
+    }
+    let hidden = presets::hidden_now(s);
+    match s.presets.iter_mut().find(|p| p.0 == name) {
+        Some(existing) => existing.1 = hidden,
+        None => s.presets.push((name, hidden)),
+    }
+    s.preset_name = rune::TextEdit::new("");
+    true
+}
+
+fn delete_preset(s: &mut State, tx: &mut Tx, name: &str) {
+    s.presets.retain(|p| p.0 != name);
+    presets_changed(s, tx);
+}
+
+fn presets_changed(s: &State, tx: &mut Tx) {
+    PRESET_COUNT.store(s.presets.len(), Ordering::Relaxed);
+    status_item::set_preset_names(s.presets.iter().map(|p| p.0.clone()).collect());
+    presets::save(s.presets.clone());
+    fit(s, tx);
+}
+
+/// Moves the icons that differ from the preset, one at a time, on a background thread.
+pub fn apply_preset(s: &mut State, name: &str) {
+    let (false, Some(handle)) = (s.busy, s.handle.clone()) else { return };
+    let Some(preset) = s.presets.iter().find(|p| p.0 == name) else { return };
+    let moves = presets::moves(s, preset);
+    if !moves.is_empty() {
+        s.busy = true;
+        status_item::move_items(handle, moves);
+    }
+}
+
 fn window_height(s: &State) -> f32 {
     match s.mode {
         Mode::Welcome => WELCOME_HEIGHT,
         Mode::Search => search_height(search_results(s).len()),
+        Mode::Presets => presets_height(s.presets.len()),
         Mode::Settings => settings_height(s.items.len(), s.advanced),
         Mode::Strip => s.look.cell() + 2.0 * s.look.padding,
     }
@@ -281,6 +344,7 @@ pub fn window_size(mode: Mode) -> (f32, f32) {
     let height = match mode {
         Mode::Welcome => WELCOME_HEIGHT,
         Mode::Search => search_height(ITEM_COUNT.load(Ordering::Relaxed)),
+        Mode::Presets => presets_height(PRESET_COUNT.load(Ordering::Relaxed)),
         Mode::Settings => settings_height(ITEM_COUNT.load(Ordering::Relaxed), ADVANCED_OPEN.load(Ordering::Relaxed)),
         Mode::Strip => look().cell() + 2.0 * look().padding,
     };
@@ -453,6 +517,7 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
         Mode::Settings => settings_view(s, dark),
         Mode::Welcome => welcome_view(s, dark),
         Mode::Search => search_view(s, dark),
+        Mode::Presets => presets_view(s, dark),
     }
 }
 
@@ -537,6 +602,60 @@ fn search_view(s: &State, dark: bool) -> El {
     glass(WINDOW_RADIUS).padding(SEARCH_PAD).child(input).child(hairline(dark)).child(el().h(SEARCH_GAP)).children(rows).children(none)
 }
 
+/// The presets: a title, one row per preset (press to apply, x to delete), and a box to save the
+/// current layout under a new name. Plain text on the glass, like search.
+fn presets_view(s: &State, dark: bool) -> El {
+    let t = tok::theme(dark);
+    let header = row().w_full().h(HEADER).center_y()
+        .child(text("Presets").font(TextStyle::new(15.0, 600.0)).color(t.text).grow(1.0))
+        .child(row().key("presets-back").role("button").label("Back").hit().h(HEADER).center_y()
+            .on_press_tx(|s: &mut State, tx| {
+                s.mode = Mode::Settings;
+                fit(s, tx);
+            })
+            .child(text("Back").font(TextStyle::new(13.5, 450.0)).color(tok::accent(0, dark))));
+    let rows = s.presets.iter().take(SEARCH_ROWS).enumerate().map(|(i, preset)| {
+        let (apply, remove) = (preset.0.clone(), preset.0.clone());
+        let active = presets::is_active(s, preset).then(|| text("Active").font(TextStyle::new(11.0, 450.0)).color(t.text_secondary));
+        row().w_full().h(ROW).center_y().px(6.0).gap(8.0)
+            .child(row().key(format!("preset-{i}")).role("button").label(preset.0.as_str()).hit().grow(1.0).h(ROW).center_y().gap(8.0)
+                .on_press_tx(move |s: &mut State, tx| {
+                    apply_preset(s, &apply);
+                    tx.close_window();
+                })
+                .child(text(preset.0.as_str()).font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
+                .children(active))
+            .child(row().key(format!("preset-delete-{i}")).role("button").label("Delete preset").hit().size(28.0, ROW).center()
+                .on_press_tx(move |s: &mut State, tx| delete_preset(s, tx, &remove))
+                .child(text("×").font(TextStyle::new(16.0, 450.0)).color(t.text_secondary)))
+    });
+    let none = s.presets.is_empty().then(|| {
+        row().w_full().h(ROW).center_y().px(6.0).child(text("No presets yet").font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
+    });
+    let field = text_input(&s.preset_name, TextStyle::new(14.0, 450.0))
+        .on_edit(|s: &mut State| &mut s.preset_name)
+        .on_submit(|s: &mut State, tx| save_preset(s, tx))
+        .key("preset-box")
+        .single_line()
+        .placeholder("Save the current layout as…", t.text_secondary)
+        .label("Name for a new preset")
+        .grow(1.0);
+    let input = row().w_full().h(SEARCH_BOX).px(6.0).center_y().child(field);
+    glass(WINDOW_RADIUS).padding(SEARCH_PAD).child(header).children(rows).children(none).child(hairline(dark)).child(el().h(SEARCH_GAP)).child(input)
+}
+
+/// One row that opens the presets.
+fn presets_row(s: &State, dark: bool) -> El {
+    let t = tok::theme(dark);
+    row().key("presets").role("button").label("Presets").hit().w_full().h(ROW).center_y()
+        .on_press_tx(|s: &mut State, tx| {
+            s.mode = Mode::Presets;
+            fit(s, tx);
+        })
+        .child(text("Presets").font(TextStyle::new(13.5, 450.0)).color(t.text).grow(1.0))
+        .child(text(format!("{}  ›", s.presets.len())).font(TextStyle::new(13.0, 450.0)).color(t.text_secondary))
+}
+
 fn settings_view(s: &State, dark: bool) -> El {
     let t = tok::theme(dark);
     let header = row().w_full().h(HEADER).center_y()
@@ -574,7 +693,7 @@ fn settings_view(s: &State, dark: bool) -> El {
     glass(WINDOW_RADIUS).padding(PAD).gap(SECTION_GAP)
         .child(header)
         .child(icons_section)
-        .child(col().w_full().child(hairline(dark)).child(login_row(s, dark)).child(hairline(dark)).child(hotkeys_row(s, dark)).child(hairline(dark)).child(advanced_section(s, dark)))
+        .child(col().w_full().child(hairline(dark)).child(login_row(s, dark)).child(hairline(dark)).child(hotkeys_row(s, dark)).child(hairline(dark)).child(presets_row(s, dark)).child(hairline(dark)).child(advanced_section(s, dark)))
 }
 
 /// One row with a switch: whether the program starts when you log in.
@@ -756,7 +875,9 @@ fn init() -> State {
     *LOOK.lock().unwrap_or_else(|e| e.into_inner()) = look;
     let setup_done = Prefs::open(APP_ID).get::<bool>("setup_done").unwrap_or(false);
     let hotkeys = Prefs::open(APP_ID).get::<bool>("hotkeys").unwrap_or(true);
-    State { look, setup_done, login: login::enabled(), hotkeys, ..State::default() }
+    let presets = presets::load();
+    PRESET_COUNT.store(presets.len(), Ordering::Relaxed);
+    State { look, setup_done, login: login::enabled(), hotkeys, presets, ..State::default() }
 }
 
 fn setup(s: &mut State, waker: Waker) {
@@ -784,6 +905,7 @@ fn main() {
             ("settings", |s| { demo_items(s); s.mode = Mode::Settings; }),
             ("advanced", |s| { demo_items(s); s.mode = Mode::Settings; s.advanced = true; }),
             ("search", |s| { demo_items(s); s.query = rune::TextEdit::new("b"); s.mode = Mode::Search; }),
+            ("presets", |s| { demo_items(s); s.presets = vec![("Work".into(), vec!["Wi-Fi#0".into()]), ("Focus".into(), vec![])]; s.mode = Mode::Presets; }),
             ("welcome", |s| { demo_items(s); s.mode = Mode::Welcome; }),
             ("welcome-blocked", |s| { s.permission = false; s.mode = Mode::Welcome; }),
         ],
@@ -816,6 +938,7 @@ fn main() {
     // Updates run on the main thread inside the event loop, which is where AppKit calls belong.
     app.handle().update(move |s, _| {
         status_item::add(handle.clone());
+        status_item::set_preset_names(s.presets.iter().map(|p| p.0.clone()).collect());
         hotkeys::install(handle);
         hotkeys::set_enabled(s.hotkeys);
     });
@@ -899,6 +1022,35 @@ mod tests {
         state.query = rune::TextEdit::new("bat");
         let names: Vec<_> = search_results(&state).into_iter().map(|i| i.name.as_str()).collect();
         assert_eq!(names, ["Battery"]);
+    }
+
+    #[test]
+    fn a_preset_moves_only_the_icons_that_differ() {
+        let mut state = State::default();
+        demo_items(&mut state); // Wi-Fi and Clock are hidden; Battery and Bluetooth are not
+        // Wi-Fi stays hidden, Clock comes out, Battery goes in.
+        let preset = ("Work".to_string(), vec![state.items[0].key(), state.items[1].key()]);
+        let moves = presets::moves(&state, &preset);
+        assert_eq!(moves, vec![(0, 1, true), (0, 2, false)]);
+        assert!(!presets::is_active(&state, &preset));
+        let same = ("Now".to_string(), presets::hidden_now(&state));
+        assert!(presets::is_active(&state, &same));
+    }
+
+    #[test]
+    fn saving_a_preset_keeps_the_hidden_icons_and_replaces_a_name() {
+        let mut state = State::default();
+        demo_items(&mut state);
+        state.preset_name = rune::TextEdit::new("  Work ");
+        assert!(add_preset(&mut state));
+        assert_eq!(state.presets.len(), 1);
+        assert_eq!(state.presets[0].0, "Work");
+        assert_eq!(state.presets[0].1.len(), 2);
+        state.preset_name = rune::TextEdit::new("Work");
+        assert!(add_preset(&mut state));
+        assert_eq!(state.presets.len(), 1);
+        state.preset_name = rune::TextEdit::new("   ");
+        assert!(!add_preset(&mut state));
     }
 
     #[test]

@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
+use objc2::{declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass};
 use objc2_app_kit::{
     NSApplication, NSEvent, NSEventMask, NSEventType, NSMenu, NSMenuItem, NSScreen, NSStatusBar, NSStatusItem,
     NSVariableStatusItemLength,
@@ -37,6 +37,8 @@ pub static PEEK_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Settings, so clicking in another app does not close it.
 pub static KEEP_OPEN: AtomicBool = AtomicBool::new(false);
 /// True while icons are being put back in view after their app restarted.
+/// The names of the saved presets, for the right-click menu.
+static PRESET_NAMES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 static RESTORING: AtomicBool = AtomicBool::new(false);
 
 /// Where the free part of the menu bar starts on a Mac with a notch: the notch's right edge, in
@@ -124,6 +126,15 @@ declare_class!(
             open(&self.ivars().handle, Mode::Search);
         }
 
+        #[method(preset:)]
+        fn preset(&self, sender: &AnyObject) {
+            let tag: isize = unsafe { msg_send![sender, tag] };
+            let name = PRESET_NAMES.lock().unwrap_or_else(|e| e.into_inner()).get(tag as usize).cloned();
+            if let Some(name) = name {
+                self.ivars().handle.update(move |s, _| crate::apply_preset(s, &name));
+            }
+        }
+
         #[method(quit:)]
         fn quit(&self, _sender: &AnyObject) {
             // Bring every hidden icon back first, so quitting never leaves the bar changed.
@@ -146,6 +157,23 @@ impl Clicker {
             };
             unsafe { item.setTarget(Some(self)) };
             menu.addItem(&item);
+        }
+        // The saved presets sit under a line: pick one to apply it.
+        let names = PRESET_NAMES.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if !names.is_empty() {
+            menu.addItem(&NSMenuItem::separatorItem(mtm));
+            for (i, name) in names.iter().enumerate() {
+                let item = unsafe {
+                    NSMenuItem::initWithTitle_action_keyEquivalent(
+                        mtm.alloc(), &NSString::from_str(name), Some(sel!(preset:)), &NSString::from_str(""),
+                    )
+                };
+                unsafe {
+                    item.setTarget(Some(self));
+                    item.setTag(i as isize);
+                }
+                menu.addItem(&item);
+            }
         }
         TOGGLE.with(|t| {
             if let Some(item) = t.borrow().as_ref() {
@@ -235,6 +263,11 @@ fn toggle_centre() -> Option<(f64, f64)> {
         let frame = window.frame();
         Some((frame.origin.x + frame.size.width / 2.0, frame.origin.y + frame.size.height / 2.0))
     })
+}
+
+/// Remembers the preset names for the right-click menu.
+pub fn set_preset_names(names: Vec<String>) {
+    *PRESET_NAMES.lock().unwrap_or_else(|e| e.into_inner()) = names;
 }
 
 /// `open` for use from any thread.
@@ -338,9 +371,16 @@ fn wait_until(seconds: f64, mut check: impl FnMut() -> bool) -> bool {
 /// never changes width, so no other icon appears. Runs on its own thread, because the system asks
 /// our main thread questions while it works.
 pub fn move_item(handle: AppHandle<State>, pid: i32, index: usize, hide: bool) {
+    move_items(handle, vec![(pid, index, hide)]);
+}
+
+/// Moves several icons, one after the other, then reads the bar again. Each is (process, index, hide).
+pub fn move_items(handle: AppHandle<State>, moves: Vec<(i32, usize, bool)>) {
     std::thread::spawn(move || {
-        if let (Some(item), Some((divider, toggle))) = (items::window_of(pid, index), items::own_windows()) {
-            items::move_left_of(item, if hide { divider } else { toggle });
+        for (pid, index, hide) in moves {
+            if let (Some(item), Some((divider, toggle))) = (items::window_of(pid, index), items::own_windows()) {
+                items::move_left_of(item, if hide { divider } else { toggle });
+            }
         }
         // Make sure the divider is wide (it is thin only before the first icon is hidden).
         set_divider_width_anywhere(HIDING_WIDTH);

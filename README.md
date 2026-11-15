@@ -32,6 +32,7 @@ So Ice Out asks for the smallest permission it can, and it is built to be light.
 - **Tune the look.** Sliders for icon size, padding, spacing and corner radius, with a live preview.
 - **Search.** Right-click the icon, then Search. Type a few letters and open any icon.
 - **Keyboard shortcuts.** Hold I (for Ice) + Option + Command, then press Space to show the hidden icons or F to search. One switch in Settings, with the keys in a small line under it.
+- **Presets.** Save the hidden icons under a name (Settings, then Presets). Switch from there or from the right-click menu. Only the icons that differ move.
 - **Open at login.** One switch.
 - **First-launch setup.** It walks you through allowing Accessibility.
 - **Quit puts everything back.** If you quit Ice Out, your bar is the way it was.
@@ -72,6 +73,7 @@ Because of this, hiding, showing and "peeking" an icon move **only that icon**. 
 | `src/items.rs` | Accessibility reads, the icon window list, moving icons |
 | `src/status_item.rs` | The two menu bar buttons, right-click menu, window placement, peeking |
 | `src/hotkeys.rs` | Keyboard shortcuts |
+| `src/presets.rs` | Presets: save, compare, work out the moves |
 | `src/login.rs` | Start at login |
 | `assets/` | App icon, menu bar mark, installer picture |
 | `scripts/` | Builds the app, the icon and the installer |
@@ -93,7 +95,8 @@ I did not run Ice or Bartender side by side with a profiler, so I do **not** hav
 | Hides icons | Yes | Yes | Yes |
 | Shows only the clicked icon | Yes | Yes (temp show) | Yes |
 | Search and hotkeys | Yes (fixed keys) | Yes | Yes |
-| Triggers, presets | Not yet | No | Yes |
+| Presets | Yes | No | Yes |
+| Triggers | Not yet | No | Yes |
 | Menu bar styling (tint, border, shape) | No | Yes | Yes |
 | Notch handling | Basic (moves unseen icons to the hidden side) | Yes (Ice Bar) | Yes |
 
