@@ -175,3 +175,12 @@ Each step ships on its own, and each is checked before the next starts.
 | Presets | medium | storage, diff and apply, a small Settings row | none |
 | Triggers A | large | rule storage, timer, power events, rule editor | none |
 | Triggers B | medium | Wi-Fi and Focus readers, opt-in screens | Location, Focus (opt-in) |
+
+## Status (after the build)
+
+All four are built: search (`Mode::Search`), keyboard shortcuts (`src/hotkeys.rs`), presets (`src/presets.rs`) and triggers (`src/triggers.rs`). What changed from the plan:
+
+- **Hotkeys:** fixed keys (hold I with Option and Command, then Space or F) and one switch, not a key recorder. The keys are read with an event tap (it needs Accessibility, which we already ask for).
+- **Presets:** stored as the list of hidden icons only. "Active" is computed.
+- **Triggers:** one condition each (battery, plugged in, a time range, installed apps that are open), checked every 30 seconds. Wi-Fi and Focus are not built, because they need extra permissions.
+- **Not done:** a key recorder, several conditions per trigger, Wi-Fi and Focus triggers. See `docs/design.md` for why.

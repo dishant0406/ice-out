@@ -6,7 +6,7 @@
 
 Ice Out hides the clutter in your Mac's menu bar. You pick which icons to hide. They vanish from the bar. When you want one, you click the Ice Out icon, and a small glass strip shows the hidden icons. You click one, and it opens, just like it was never hidden.
 
-It is a small, fast app. It needs **one permission** (Accessibility). It does **not** need Screen Recording. It uses about **28 MB** of memory and **0% CPU** when you are not using it.
+It is a small, fast app. It needs **one permission** (Accessibility). It does **not** need Screen Recording. It uses about **25 MB** of memory and **0% CPU** when you are not using it.
 
 > Status: early (v0.1). It works and I use it, but it is young. Read [What is tested and what is not](#what-is-tested-and-what-is-not) before you trust it.
 
@@ -110,7 +110,7 @@ Release build, one MacBook with a notch, macOS 26. These are my own numbers for 
 
 | What | Result |
 | --- | --- |
-| Memory when idle (`phys_footprint`) | 28 MB (RSS about 60 MB, which counts shared system libraries) |
+| Memory when idle (`phys_footprint`) | 24 MB on a fresh start, with search, shortcuts, presets and triggers built in (RSS about 63 MB, which counts shared system libraries) |
 | Memory with the window open | about 32 MB |
 | Memory after 60 open and close cycles | 36 to 40 MB, settles back to 37 MB, no leak trend |
 | CPU when idle | 0% |
@@ -119,6 +119,7 @@ Release build, one MacBook with a notch, macOS 26. These are my own numbers for 
 | Window opens after a click | 33 to 40 ms |
 | Reading the whole bar (about 40 apps) | about 100 to 175 ms, on a background thread (was 2.5 s on the main thread) |
 | Binary size | about 17 MB |
+| CPU while idle, with the 30 second trigger check and the key tap | 0.0% |
 
 Things that were slow, and what fixed them (all in `docs/design.md`):
 

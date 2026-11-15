@@ -291,7 +291,7 @@ fn open_item(s: &mut State, tx: &mut Tx, item: &Item) {
         let (pid, index) = (item.pid, item.index);
         std::thread::spawn(move || {
             items::press(pid, index);
-            let _ = handle.update(|s, _| s.busy = false);
+            handle.update(|s, _| s.busy = false);
         });
     }
 }
