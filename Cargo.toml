@@ -1,0 +1,26 @@
+[package]
+name = "iceout"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+rune = { git = "https://github.com/anomalyco/rune", rev = "feac7b155c5f5873ad611e8aa420ad217db5ef16" }
+# Same versions Rune uses, so there is only one copy of each.
+objc2 = "0.5.2"
+block2 = "0.5.1"
+objc2-foundation = { version = "0.2.2", features = ["NSString", "NSGeometry", "NSThread", "NSArray", "NSURL", "NSData"] }
+objc2-app-kit = { version = "0.2.2", features = ["NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView", "NSResponder", "NSWindow", "NSScreen", "NSWorkspace", "NSMenu", "NSMenuItem", "NSEvent", "NSImage", "NSRunningApplication", "NSApplication", "libc", "block2"] }
+
+# Cargo does not inherit Rune's patches, so we repeat them at the same rev.
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune", rev = "feac7b155c5f5873ad611e8aa420ad217db5ef16" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "feac7b155c5f5873ad611e8aa420ad217db5ef16" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "feac7b155c5f5873ad611e8aa420ad217db5ef16" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "feac7b155c5f5873ad611e8aa420ad217db5ef16" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "feac7b155c5f5873ad611e8aa420ad217db5ef16" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
