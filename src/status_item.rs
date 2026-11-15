@@ -218,11 +218,26 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
     }
 }
 
-/// `open` for a shortcut: the window opens under the mouse, on the display it is on.
-pub fn open_at_mouse(handle: &AppHandle<State>, mode: Mode) {
-    let mouse = unsafe { NSEvent::mouseLocation() };
-    LAST_CLICK.set((mouse.x, mouse.y));
+/// `open` for a shortcut: the strip opens under the Iceout icon, like a click on it. Search opens
+/// in the middle of the display the mouse is on.
+pub fn open_from_shortcut(handle: &AppHandle<State>, mode: Mode) {
+    let point = if mode == Mode::Search { None } else { toggle_centre() }.unwrap_or_else(|| {
+        let mouse = unsafe { NSEvent::mouseLocation() };
+        (mouse.x, mouse.y)
+    });
+    LAST_CLICK.set(point);
     open(handle, mode);
+}
+
+/// The middle of our menu bar icon, in screen points.
+fn toggle_centre() -> Option<(f64, f64)> {
+    let mtm = MainThreadMarker::new()?;
+    TOGGLE.with(|t| {
+        let item = t.borrow();
+        let window = unsafe { item.as_ref()?.button(mtm)?.window()? };
+        let frame = window.frame();
+        Some((frame.origin.x + frame.size.width / 2.0, frame.origin.y + frame.size.height / 2.0))
+    })
 }
 
 /// `open` for use from any thread.

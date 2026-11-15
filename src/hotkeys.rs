@@ -76,8 +76,8 @@ fn run(show_icons: bool) {
         let Some(handle) = h.borrow().clone() else { return };
         match show_icons {
             true if handle.is_visible() => handle.hide(),
-            true => status_item::open_at_mouse(&handle, Mode::Strip),
-            false => status_item::open_at_mouse(&handle, Mode::Search),
+            true => status_item::open_from_shortcut(&handle, Mode::Strip),
+            false => status_item::open_from_shortcut(&handle, Mode::Search),
         }
     });
 }
