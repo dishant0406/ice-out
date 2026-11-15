@@ -138,6 +138,7 @@ I tested these live on a real menu bar, with screenshots:
 
 Built, but **not tested live yet** (please try them and tell me):
 
+- Presets: saving one, applying one (moves several icons) and deleting one. I only checked that the window opens from Settings and that the moves are worked out right (unit tests).
 - Search with a real click, and the two keyboard shortcuts (the keyboard tap is created and active, but I did not press the keys, because key presses stop my own session).
 - The window opening under the right display on a **second monitor**.
 - An app that restarts getting its icon put back where you had it.
