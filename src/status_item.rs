@@ -187,9 +187,7 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
         // The bottom edge of the menu bar, in Cocoa coordinates (y counts up from the bottom of the main display).
         let bar_bottom = screen.visibleFrame().origin.y + screen.visibleFrame().size.height;
         // Centred under the click, but never past the screen edge.
-        // Search opens in the middle of the display, the others under the click.
-        let centre = if mode == Mode::Search { frame.origin.x + frame.size.width / 2.0 } else { mouse_x };
-        let left = (centre - width / 2.0).clamp(frame.origin.x + 8.0, (frame.origin.x + frame.size.width - width - 8.0).max(frame.origin.x + 8.0));
+        let left = (mouse_x - width / 2.0).clamp(frame.origin.x + 8.0, (frame.origin.x + frame.size.width - width - 8.0).max(frame.origin.x + 8.0));
         // Rune wants points counted from the top left of the main display.
         (left, primary_height - bar_bottom + 6.0)
     };
@@ -218,10 +216,9 @@ pub fn open(handle: &AppHandle<State>, mode: Mode) {
     }
 }
 
-/// `open` for a shortcut: the strip opens under the Iceout icon, like a click on it. Search opens
-/// in the middle of the display the mouse is on.
+/// `open` for a shortcut: the window opens under the Iceout icon, like a click on it.
 pub fn open_from_shortcut(handle: &AppHandle<State>, mode: Mode) {
-    let point = if mode == Mode::Search { None } else { toggle_centre() }.unwrap_or_else(|| {
+    let point = toggle_centre().unwrap_or_else(|| {
         let mouse = unsafe { NSEvent::mouseLocation() };
         (mouse.x, mouse.y)
     });
