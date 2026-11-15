@@ -646,7 +646,7 @@ fn presets_view(s: &State, dark: bool) -> El {
         .label("Name for a new preset")
         .grow(1.0);
     let input = row().w_full().h(SEARCH_BOX).px(6.0).center_y().child(field);
-    glass(WINDOW_RADIUS).padding(SEARCH_PAD).child(header).children(rows).children(none).child(hairline(dark)).child(el().h(SEARCH_GAP)).child(input)
+    glass(WINDOW_RADIUS).key("presets-screen").padding(SEARCH_PAD).child(header).children(rows).children(none).child(hairline(dark)).child(el().h(SEARCH_GAP)).child(input)
 }
 
 /// One row that opens the presets.
@@ -695,7 +695,7 @@ fn settings_view(s: &State, dark: bool) -> El {
     let list = col().key("body").w_full().grow(1.0).min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).children(rows);
     let icons_section = col().w_full().grow(1.0).min_h(0.0).child(section_label("HIDDEN ICONS", dark)).child(list);
 
-    glass(WINDOW_RADIUS).padding(PAD).gap(SECTION_GAP)
+    glass(WINDOW_RADIUS).key("settings-screen").padding(PAD).gap(SECTION_GAP)
         .child(header)
         .child(icons_section)
         .child(col().w_full().child(hairline(dark)).child(login_row(s, dark)).child(hairline(dark)).child(hotkeys_row(s, dark)).child(hairline(dark)).child(presets_row(s, dark)).child(hairline(dark)).child(advanced_section(s, dark)))
