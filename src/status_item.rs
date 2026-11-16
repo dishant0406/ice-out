@@ -23,7 +23,7 @@ use rune::{AppHandle, DisplayTarget, OverlayPlacement};
 use crate::{items, Mode, State};
 
 pub const DIVIDER_TITLE: &str = "\u{2009}";
-const DIVIDER_WIDTH: f64 = 10.0;
+const DIVIDER_WIDTH: f64 = 1.0;
 
 /// Set when the user has clicked or pressed a key in another app, which means they are done
 /// with the icon we revealed.
@@ -72,9 +72,37 @@ fn on_main(job: impl FnOnce() + Send + 'static) {
     unsafe { dispatch_async_f(&raw const _dispatch_main_q, Box::into_raw(boxed) as *mut c_void, run_boxed) };
 }
 
-/// `set_divider_width` for use from any thread.
+/// Makes the divider very wide, from any thread. The divider is put back in the bar first if it was removed.
 pub fn set_divider_width_anywhere(width: f64) {
-    on_main(move || set_divider_width(width));
+    on_main(move || {
+        set_divider_visible(true);
+        set_divider_width(width);
+    });
+}
+
+/// Puts the divider in the bar or takes it out. It is out whenever nothing is hidden, so it
+/// leaves no blank gap beside the Iceout icon.
+fn set_divider_visible(visible: bool) {
+    DIVIDER.with(|d| {
+        if let Some(item) = d.borrow().as_ref() {
+            unsafe { item.setVisible(visible) };
+        }
+    });
+}
+
+/// Takes the divider out of the bar, from any thread. Call it only when nothing is hidden.
+pub fn remove_divider_anywhere() {
+    on_main(|| {
+        set_divider_width(DIVIDER_WIDTH);
+        set_divider_visible(false);
+    });
+}
+
+/// Puts the divider back in the bar and waits until it has a window, so an icon can be dropped
+/// next to it. Call it from a background thread.
+fn show_divider() {
+    on_main(|| set_divider_visible(true));
+    wait_until(1.0, || items::own_windows().is_some());
 }
 
 struct Ivars {
@@ -196,6 +224,8 @@ impl Clicker {
 /// main display.
 pub fn open(handle: &AppHandle<State>, mode: Mode) {
     let Some(mtm) = MainThreadMarker::new() else { return };
+    // Nothing works without Accessibility, so show the setup, which explains how to turn it on.
+    let mode = if items::has_permission() { mode } else { Mode::Welcome };
     let screens = NSScreen::screens(mtm);
     let Some(primary) = screens.iter().next() else { return };
     let primary_height = primary.frame().size.height;
@@ -379,6 +409,14 @@ pub fn move_item(handle: AppHandle<State>, pid: i32, index: usize, hide: bool) {
 /// Moves several icons, one after the other, then reads the bar again. Each is (process, index, hide).
 pub fn move_items(handle: AppHandle<State>, moves: Vec<(i32, usize, bool)>) {
     std::thread::spawn(move || {
+        show_divider();
+        // When icons are being hidden, widen the divider first. Otherwise a hidden icon would sit
+        // in view next to the thin divider until it widens, which looks like a flash.
+        if moves.iter().any(|(_, _, hide)| *hide) {
+            set_divider_width_anywhere(HIDING_WIDTH);
+            // The window takes a moment to grow, and the drop must aim at where it ends up.
+            wait_until(1.0, || items::own_windows().is_some_and(|(divider, _)| divider.width > 1000.0));
+        }
         for (pid, index, hide) in moves {
             if let (Some(item), Some((divider, toggle))) = (items::window_of(pid, index), items::own_windows()) {
                 items::move_left_of(item, if hide { divider } else { toggle });
@@ -395,7 +433,7 @@ pub fn move_items(handle: AppHandle<State>, moves: Vec<(i32, usize, bool)>) {
 /// Opens a hidden icon's menu. Like Ice, this moves the icon next to the toggle, where it can be
 /// seen, clicks it, and puts it back once the user is done with its menu. Every other hidden icon
 /// stays hidden the whole time. The click is an accessibility press, so the cursor does not move.
-pub fn press_hidden(handle: AppHandle<State>, pid: i32, index: usize, key: String) {
+pub fn press_hidden(handle: AppHandle<State>, pid: i32, index: usize, key: String, right: bool) {
     std::thread::spawn(move || {
         PEEK_ACTIVE.store(true, Ordering::Relaxed);
         let shown = key.clone();
@@ -406,9 +444,16 @@ pub fn press_hidden(handle: AppHandle<State>, pid: i32, index: usize, key: Strin
         };
         if moved && wait_until(2.0, || items::position(pid, index).is_some()) {
             DONE_WITH_ICON.store(false, Ordering::Relaxed);
-            items::press(pid, index);
-            // Keep the icon where it is until the user clicks or presses a key in another app,
-            // which is how a menu gets used, or until 15 seconds pass.
+            items::press(pid, index, right);
+            // After a right click, the icon goes back as soon as its menu has closed.
+            if right && wait_until(1.5, items::menu_open) {
+                while items::menu_open() {
+                    sleep(Duration::from_millis(50));
+                }
+                DONE_WITH_ICON.store(true, Ordering::Relaxed);
+            }
+            // Otherwise keep the icon where it is until the user clicks or presses a key in another
+            // app, which is how a menu gets used, or until 15 seconds pass.
             for _ in 0..300 {
                 if DONE_WITH_ICON.load(Ordering::Relaxed) {
                     break;
@@ -437,7 +482,18 @@ pub fn fix_overflow() {
     if notch <= 0.0 || PEEK_ACTIVE.load(Ordering::Relaxed) || items::SENDING_EVENTS.load(Ordering::Relaxed) {
         return;
     }
-    let Some((divider, _)) = items::own_windows() else { return };
+    let divider = match items::own_windows() {
+        Some((divider, _)) => divider,
+        None => {
+            // The divider is out of the bar (nothing is hidden). Bring it back only if an icon is under the notch.
+            if !items::windows().iter().any(|w| w.x > 0.0 && w.x + w.width <= notch + 2.0) {
+                return;
+            }
+            show_divider();
+            let Some((divider, _)) = items::own_windows() else { return };
+            divider
+        }
+    };
     for window in items::windows() {
         let right_of_divider = window.x >= divider.x + divider.width - 2.0;
         let too_far_left = window.x + window.width <= notch + 2.0;

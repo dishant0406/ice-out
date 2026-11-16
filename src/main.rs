@@ -47,7 +47,7 @@ const WELCOME_WIDTH: f32 = 360.0;
 const SEARCH_WIDTH: f32 = 360.0;
 /// The most results the search window shows at once.
 const SEARCH_ROWS: usize = 6;
-const WELCOME_HEIGHT: f32 = 404.0;
+const WELCOME_HEIGHT: f32 = 440.0;
 const SECTION_LABEL: f32 = 26.0;
 const SECTION_GAP: f32 = 14.0;
 const PREVIEW_HEIGHT: f32 = 96.0;
@@ -280,17 +280,18 @@ fn search_results(s: &State) -> Vec<&Item> {
     s.items.iter().filter(|item| matches(&item.name, &s.query.text)).collect()
 }
 
-/// Opens an icon's menu: a hidden one is brought out first, then put back.
-fn open_item(s: &mut State, tx: &mut Tx, item: &Item) {
+/// Opens an icon's menu: a hidden one is brought out first, then put back. With `right` it is a
+/// right click, for the apps that keep their menu there.
+fn open_item(s: &mut State, tx: &mut Tx, item: &Item, right: bool) {
     tx.close_window();
     let (false, Some(handle)) = (s.busy, s.handle.clone()) else { return };
     s.busy = true;
     if item.hidden {
-        status_item::press_hidden(handle, item.pid, item.index, item.key());
+        status_item::press_hidden(handle, item.pid, item.index, item.key(), right);
     } else {
         let (pid, index) = (item.pid, item.index);
         std::thread::spawn(move || {
-            items::press(pid, index);
+            items::press(pid, index, right);
             handle.update(|s, _| s.busy = false);
         });
     }
@@ -485,6 +486,9 @@ pub(crate) fn apply(s: &mut State, tx: &mut Tx, permission: bool, mut found: Vec
     // wide. This also hides a new icon that arrived while the divider was thin.
     if s.items.iter().any(|i| i.hidden) {
         status_item::set_divider_width_anywhere(status_item::HIDING_WIDTH);
+    } else if !s.busy && s.peeking.is_none() {
+        // Nothing is hidden (or Accessibility is off), so the divider has no job and leaves the bar.
+        status_item::remove_divider_anywhere();
     }
     if let (false, true, Some(handle)) = (restore.is_empty() || s.busy, s.peeking.is_none(), s.handle.clone()) {
         status_item::restore_visible(handle, restore);
@@ -561,7 +565,7 @@ fn view(s: &State, cx: &mut Cx<State>) -> El {
         return welcome_view(s, dark);
     }
     if !s.permission {
-        return glass(WINDOW_RADIUS).padding(PAD).child(text("Turn on Accessibility for this app in System Settings, Privacy & Security.").color(t.text));
+        return glass(WINDOW_RADIUS).padding(PAD).child(text("Turn on Accessibility for this app in System Settings, Privacy & Security.").wrap().color(t.text));
     }
     match s.mode {
         Mode::Strip => strip_view(s, dark),
@@ -581,15 +585,19 @@ fn strip_view(s: &State, dark: bool) -> El {
     }
     let icons = hidden.into_iter().enumerate().map(|(i, item)| {
         let (pid, index, key) = (item.pid, item.index, item.key());
+        // The same open for both clicks. A right click opens the app's right-click menu.
+        let open = move |s: &mut State, tx: &mut Tx, right: bool| {
+            if let (false, Some(handle)) = (s.busy, s.handle.clone()) {
+                s.busy = true;
+                status_item::press_hidden(handle, pid, index, key.clone(), right);
+                tx.close_window();
+            }
+        };
+        let open_right = open.clone();
         col().key(format!("hidden-{i}")).role("button").label(item.name.as_str()).hit()
             .size(s.look.cell(), s.look.cell()).radius(10.0).center()
-            .on_press_tx(move |s: &mut State, tx| {
-                if let (false, Some(handle)) = (s.busy, s.handle.clone()) {
-                    s.busy = true;
-                    status_item::press_hidden(handle, pid, index, key.clone());
-                    tx.close_window();
-                }
-            })
+            .on_press_tx(move |s: &mut State, tx| open(s, tx, false))
+            .on_secondary_press(move |s: &mut State, _, tx| open_right(s, tx, true))
             .child(picture(item, s.look.icon, dark))
     });
     glass(s.look.corners).child(row().w_full().h_full().center_y().padding(s.look.padding).gap(s.look.spacing).children(icons))
@@ -621,7 +629,7 @@ fn search_view(s: &State, dark: bool) -> El {
         .on_edit(|s: &mut State| &mut s.query)
         .on_submit(move |s: &mut State, tx| {
             if let Some(item) = &first {
-                open_item(s, tx, item);
+                open_item(s, tx, item, false);
             }
         })
         .key("search-box")
@@ -643,8 +651,10 @@ fn search_view(s: &State, dark: bool) -> El {
     let rows = found.into_iter().enumerate().map(|(i, item)| {
         let name = item.name.clone();
         let icon = picture(&item, 22.0, dark);
+        let right_item = item.clone();
         row().key(format!("result-{i}")).role("button").label(name.as_str()).hit().w_full().h(ROW).center_y().gap(12.0).px(6.0)
-            .on_press_tx(move |s: &mut State, tx| open_item(s, tx, &item))
+            .on_press_tx(move |s: &mut State, tx| open_item(s, tx, &item, false))
+            .on_secondary_press(move |s: &mut State, _, tx| open_item(s, tx, &right_item, true))
             .child(icon)
             .child(text(name).font(TextStyle::new(13.5, 450.0)).color(t.text))
     });

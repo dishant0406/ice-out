@@ -211,8 +211,12 @@ pub fn position(pid: i32, index: usize) -> Option<f64> {
     found
 }
 
-/// Clicks the item, so its menu opens. The item must be on screen.
-pub fn press(pid: i32, index: usize) {
+/// Clicks the item, so its menu opens. The item must be on screen. With `right` it is a right
+/// click, for the apps that keep their menu there.
+pub fn press(pid: i32, index: usize, right: bool) {
+    if right {
+        return right_click(pid, index);
+    }
     unsafe {
         let app = AXUIElementCreateApplication(pid);
         if let Some(bar) = attribute(app, "AXExtrasMenuBar") {
@@ -336,6 +340,31 @@ pub fn own_windows() -> Option<(Window, Window)> {
     divider.zip(toggle)
 }
 
+/// True while a menu is open on the screen. Menus are windows on layer 101. Some apps keep a hidden
+/// one all the time, so only windows that are on the screen count. (On recent macOS the owner of
+/// an icon's menu may be Control Centre rather than the app, so the owner is not checked.)
+pub fn menu_open() -> bool {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    let mut open = false;
+    unsafe {
+        let list = CGWindowListCopyWindowInfo(0, 0) as *mut AnyObject;
+        if list.is_null() {
+            return false;
+        }
+        let total: usize = msg_send![list, count];
+        for i in 0..total {
+            let info: *mut AnyObject = msg_send![list, objectAtIndex: i];
+            if number(info, "kCGWindowLayer") as i64 == 101 && number(info, "kCGWindowIsOnscreen") != 0.0 {
+                open = true;
+                break;
+            }
+        }
+        CFRelease(list as CFTypeRef);
+    }
+    open
+}
+
 /// Where a window is now, or None if it is gone.
 fn window_x(id: u32) -> Option<f64> {
     windows().into_iter().find(|w| w.id == id).map(|w| w.x)
@@ -401,11 +430,11 @@ const WINDOW_UNDER_POINTER: u32 = 91;
 const WINDOW_UNDER_POINTER_CAN_HANDLE: u32 = 92;
 const WINDOW_ID: u32 = 0x33;
 
-/// One Command + mouse event, tagged for `window`. `x` is where it claims to happen.
-unsafe fn tagged_event(source: CFTypeRef, kind: u32, x: f64, y: f64, window: Window) -> CFTypeRef {
+/// One mouse event, tagged for `window`. `x` and `y` are where it claims to happen.
+unsafe fn tagged_event(source: CFTypeRef, kind: u32, x: f64, y: f64, window: Window, button: u32, flags: u64) -> CFTypeRef {
     unsafe {
-        let event = CGEventCreateMouseEvent(source, kind, Point { x, y }, 0);
-        CGEventSetFlags(event, 0x100000); // Command
+        let event = CGEventCreateMouseEvent(source, kind, Point { x, y }, button);
+        CGEventSetFlags(event, flags);
         CGEventSetIntegerValueField(event, TARGET_PID, i64::from(window.pid));
         CGEventSetIntegerValueField(event, SOURCE_USER_DATA, event as i64);
         CGEventSetIntegerValueField(event, WINDOW_UNDER_POINTER, i64::from(window.id));
@@ -423,11 +452,10 @@ unsafe fn send(event: CFTypeRef, pid: i32) {
     }
 }
 
-/// Moves `item` so that it ends up just left of `target` (a window of the divider or the toggle).
-/// Returns whether the item moved.
-pub fn move_left_of(item: Window, target: Window) -> bool {
+/// Runs `f` (which sends tagged events) with the cursor hidden, then puts the cursor back where the
+/// user had it. Our own mouse monitors ignore events while this runs.
+fn while_sending(f: impl FnOnce(CFTypeRef)) {
     use std::{thread::sleep, time::Duration};
-    let before = window_x(item.id);
     SENDING_EVENTS.store(true, std::sync::atomic::Ordering::Relaxed);
     unsafe {
         let start = CGEventCreate(std::ptr::null());
@@ -445,26 +473,72 @@ pub fn move_left_of(item: Window, target: Window) -> bool {
         CFRelease(permit);
 
         let source = CGEventSourceCreate(1); // 1 = the hardware state
+        f(source);
+        CFRelease(source);
+
+        CGWarpMouseCursorPosition(cursor);
+        sleep(Duration::from_millis(30));
+        CGDisplayShowCursor(display);
+    }
+    // The system hands our events to the monitors a moment later, so keep ignoring for a bit.
+    sleep(Duration::from_millis(200));
+    SENDING_EVENTS.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Moves `item` so that it ends up just left of `target` (a window of the divider or the toggle).
+/// Returns whether the item moved.
+pub fn move_left_of(item: Window, target: Window) -> bool {
+    use std::{thread::sleep, time::Duration};
+    let before = window_x(item.id);
+    while_sending(|source| unsafe {
         // The drag starts far off the screen and ends at the left edge of the target.
-        let down = tagged_event(source, 1, 20_000.0, 20_000.0, item);
-        let up = tagged_event(source, 2, target.x, 16.0, target);
+        let down = tagged_event(source, 1, 20_000.0, 20_000.0, item, 0, 0x100000); // 0x100000 = Command
+        let up = tagged_event(source, 2, target.x, 16.0, target, 0, 0x100000);
         send(down, item.pid);
         sleep(Duration::from_millis(60));
         send(up, item.pid);
-        CFRelease(source);
 
-        // Wait for the item to land, then put the cursor back where the user had it.
+        // Wait for the item to land.
         for _ in 0..20 {
             sleep(Duration::from_millis(15));
             if window_x(item.id) != before {
                 break;
             }
         }
-        CGWarpMouseCursorPosition(cursor);
-        CGDisplayShowCursor(display);
-    }
-    // The system hands our events to the monitors a moment later, so keep ignoring for a bit.
-    sleep(Duration::from_millis(200));
-    SENDING_EVENTS.store(false, std::sync::atomic::Ordering::Relaxed);
+    });
     window_x(item.id) != before
+}
+
+/// Right-clicks the item, so its own right-click menu opens. Status items have no accessibility
+/// action for this, so, like Ice, it is a real click in the middle of the item, tagged for the
+/// item's window. The cursor is hidden meanwhile and put back, as in a move.
+fn right_click(pid: i32, index: usize) {
+    use std::{thread::sleep, time::Duration};
+    let Some(window) = window_of(pid, index) else { return };
+    let (x, y) = (window.x + window.width / 2.0, 16.0);
+    // One hide and show of the cursor around everything, so it cannot flash between two attempts.
+    while_sending(|source| unsafe {
+        let click = |warp: bool| {
+            if warp {
+                CGWarpMouseCursorPosition(Point { x, y });
+                sleep(Duration::from_millis(150));
+            }
+            for kind in [3u32, 4] {
+                // 3 = right mouse down, 4 = right mouse up, 1 = the right button.
+                let event = CGEventCreateMouseEvent(source, kind, Point { x, y }, 1);
+                CGEventSetIntegerValueField(event, 1, 1); // click state
+                CGEventPost(if warp { 0 } else { 1 }, event); // 0 = hardware tap, 1 = session tap
+                CFRelease(event);
+                sleep(Duration::from_millis(80));
+            }
+        };
+        // First try without moving the cursor. If no menu opens, click for real.
+        click(false);
+        sleep(Duration::from_millis(250));
+        if menu_open() {
+            return;
+        }
+        click(true);
+        sleep(Duration::from_millis(30));
+    });
 }

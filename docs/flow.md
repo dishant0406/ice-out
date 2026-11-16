@@ -62,6 +62,7 @@ Click Advanced to open it. It shows a live preview of the strip and four sliders
 4. Escape in the box closes the window (`on_input_key` in `search_view`: the box would otherwise take Escape and only lose focus).
 5. Nothing matches: the list shows "No matching icons". Enter does nothing. Click away or Done closes it as always.
 6. Busy (another icon is moving): `open_item` does nothing, so a second request cannot collide.
+7. Right-click on a row (or on an icon in the strip) does the same as a click, but with `right: true`. A hidden icon is brought out first (`press_hidden`). `right_click` in `src/items.rs` then hides the cursor, tries a cursor-free click, and if no menu opens (`menu_open`) moves the hidden cursor onto the icon, sends a real right click and moves it back. When the menu window is gone, the icon is put back. No menu ever shows: the icon goes back after a click or key elsewhere, or 15 seconds. The window is gone or no icon is found: nothing happens.
 
 ## Keyboard shortcuts
 
@@ -115,3 +116,10 @@ Done, a click on the Iceout icon, or a click anywhere else (global mouse monitor
 - `src/main.rs`: state, the two views, reading and merging the menu bar (`reload`, `apply`).
 - `src/items.rs`: Accessibility reads, pressing an item, the synthetic drag.
 - `src/status_item.rs`: the two buttons, the right-click menu, window placement, hide and reveal jobs.
+
+## Divider in and out of the bar
+1. At launch the divider is in the bar. The first read of the bar (`apply` in `src/main.rs`) decides: if any icon is hidden, the divider is made very wide and stays. If none is hidden, or Accessibility is off, `remove_divider_anywhere` takes it out, so there is no gap beside the Iceout icon.
+2. Hiding an icon (or applying a preset): `move_items` calls `show_divider` first, waits until the divider has a window, makes it wide and waits until it really is wide, then drops the icon next to it, so the icon never shows beside a thin divider.
+3. Revealing the last hidden icon: the next read finds nothing hidden, so the divider leaves again. While a move or a peek is running, `apply` leaves the divider alone.
+4. A Mac with a notch and an icon under it: `fix_overflow` brings the divider back, moves that icon to the hidden side, and the read after that keeps the divider.
+5. Accessibility off: clicking the Iceout icon, or any shortcut, opens the Welcome screen (`open`), with "Open System Settings". The Get started button stays grey until it is allowed.
